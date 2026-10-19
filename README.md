@@ -2,6 +2,8 @@
 
 > 输入一个奇域 ID，自动产出可信的玩家体验分析报告（Excel + 自包含 HTML 看板）。
 
+[![CI](https://github.com/sumomowynaut/miliastra-review-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/sumomowynaut/miliastra-review-analytics/actions/workflows/ci.yml)
+
 **核心主张**：UGC 评论区拿到的原始数据，直接拿来下结论通常是错的。
 本项目把踩过的坑沉淀成六份方法论文档，代码只是它的实现。
 
@@ -156,21 +158,15 @@ CI 在每次 push 时自动执行：单元测试 → 端到端 → 产出文件�
 bash scripts/ci.sh
 ```
 
-### 启用 GitHub Actions（一次性手动操作）
+### GitHub Actions
 
-部分推送通道出于安全策略禁止写入 `.github/workflows/` 目录，所以 workflow
-文件需要你手动添加一次：
-
-1. 打开仓库 → **Add file** → **Create new file**
-2. 文件名框里输入完整路径：`.github/workflows/ci.yml`
-   （斜杠会自动创建目录）
-3. 内容照抄 [`docs/github-actions-ci.yml`](docs/github-actions-ci.yml)
-4. Commit
-
-加上之后，每次 push 会自动执行：单元测试 → 端到端 → 产出文件校验 →
+每次 push 自动执行：单元测试 → 端到端 → 产出文件校验 →
 看板自包含检查 → 脱敏泄漏检查 → 确认数据产出未被提交。
 
-**不加也能用** —— `scripts/ci.sh` 是它的等价本地实现，不依赖 CI 就能跑全部检查：
+workflow 定义在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)，
+一份等价副本在 [`docs/github-actions-ci.yml`](docs/github-actions-ci.yml)。
+
+**不依赖 CI 也能跑全套检查**：
 
 ```bash
 bash scripts/ci.sh
