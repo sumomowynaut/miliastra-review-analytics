@@ -49,7 +49,9 @@ def load_reference(path):
         if u:
             uids.add(u)
         n = r.get("user") or r.get("username") or ""
-        if n and len(n) >= 3:
+        # ★ 阈值 2 —— 2 字昵称（"张三"）也是真实身份，不能漏。
+        #   之前收集阈值 >=3、检查阈值 <4，两头都把 2 字昵称漏掉了。
+        if n and len(n) >= 2:
             names.add(n)
     return uids, names
 
@@ -117,7 +119,10 @@ def main():
         # 2. 真实昵称（长度 >= 4，避免"123""emmm"这类噪声误报）
         #    只在"昵称字段"语境下判定，避免命中评论正文
         for nm in names:
-            if len(nm) < 4:
+            # 只跳过 1 个字符的昵称（几乎必然是噪声）。
+            # 检查是按字段位置做的（"user": "X" / Excel 用户列），
+            # 出现在这些位置就说明它确实是昵称字段，不会像全文搜子串那样误报。
+            if len(nm) < 2:
                 continue
             if nm in content:
                 # 出现在 user/nickname 字段值里才算泄漏
