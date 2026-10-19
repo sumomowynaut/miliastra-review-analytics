@@ -78,10 +78,14 @@ def main():
     with open(os.path.join(outdir, "analysis.json"), "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=str)
 
+    # 公开案例只放分层抽样的 200 条 —— 全量会让仓库体积暴涨，
+    # 而分层抽样保留了月度分布，足够展示方法与结论
+    sample_rows = anonymize.sample_for_fixture(pub_rows, n=200, seed=2026)
     with open(os.path.join(outdir, "raw_public.json"), "w", encoding="utf-8") as f:
         json.dump({"level_id": level_id, "region": meta.get("region", "cn_gf01"),
-                   "note": "脱敏示例数据 —— UID 已哈希，昵称已替换，IP 属地已移除",
-                   "rows": pub_rows}, f, ensure_ascii=False, indent=2)
+                   "note": "脱敏示例数据 —— UID 已哈希，昵称已替换，IP 属地已移除；"
+                           "评论正文为玩家原话未做改写。分层抽样 200 条，保留月度分布。",
+                   "rows": sample_rows}, f, ensure_ascii=False, indent=2)
 
     xlsx = os.path.join(outdir, "数据报告.xlsx")
     build_excel(result, pub_rows, xlsx, level_id=level_id, title=title, meta=meta)
