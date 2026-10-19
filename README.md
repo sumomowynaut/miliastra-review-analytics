@@ -158,20 +158,6 @@ CI 在每次 push 时自动执行：单元测试 → 端到端 → 产出文件�
 bash scripts/ci.sh
 ```
 
-### GitHub Actions
-
-每次 push 自动执行：单元测试 → 端到端 → 产出文件校验 →
-看板自包含检查 → 脱敏泄漏检查 → 确认数据产出未被提交。
-
-workflow 定义在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)，
-一份等价副本在 [`docs/github-actions-ci.yml`](docs/github-actions-ci.yml)。
-
-**不依赖 CI 也能跑全套检查**：
-
-```bash
-bash scripts/ci.sh
-```
-
 ---
 
 ## 使用约束与免责
@@ -193,4 +179,4 @@ bash scripts/ci.sh
 
 ## License
 
-MIT
+[MIT](LICENSE)
