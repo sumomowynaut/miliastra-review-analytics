@@ -124,7 +124,8 @@ class TestIntegrity(unittest.TestCase):
 
     def test_detects_missing_rows(self):
         res = CrawlResult(level_id="1", region="cn_gf01", total=100)
-        res.rows = [{"floor_id": i, "is_recommend": True} for i in range(50)]
+        res.rows = [{"reply_id": str(i), "floor_id": i, "is_recommend": True}
+                    for i in range(50)]
         res.meta = {"goodRate": "80%"}
         res.passes = [Pass(sort_type=2, pages=5)]
         ok, checks = res.integrity()
@@ -133,7 +134,8 @@ class TestIntegrity(unittest.TestCase):
 
     def test_detects_degraded_pass(self):
         res = CrawlResult(level_id="1", region="cn_gf01", total=10)
-        res.rows = [{"floor_id": i, "is_recommend": True} for i in range(10)]
+        res.rows = [{"reply_id": str(i), "floor_id": i, "is_recommend": True}
+                    for i in range(10)]
         res.meta = {"goodRate": "100%"}
         res.passes = [Pass(sort_type=2, pages=3),
                       Pass(sort_type=4, pages=0, error="boom")]
@@ -143,7 +145,8 @@ class TestIntegrity(unittest.TestCase):
 
     def test_passes_on_clean_data(self):
         res = CrawlResult(level_id="1", region="cn_gf01", total=10)
-        res.rows = [{"floor_id": i, "is_recommend": True} for i in range(10)]
+        res.rows = [{"reply_id": str(i), "floor_id": i, "is_recommend": True}
+                    for i in range(10)]
         res.meta = {"goodRate": "100%"}
         res.passes = [Pass(sort_type=2, pages=1), Pass(sort_type=4, pages=1)]
         ok, checks = res.integrity()
@@ -151,7 +154,7 @@ class TestIntegrity(unittest.TestCase):
 
     def test_span_detects_gaps(self):
         res = CrawlResult(level_id="1", region="cn_gf01", total=10)
-        res.rows = [{"floor_id": f, "is_recommend": True}
+        res.rows = [{"reply_id": str(f), "floor_id": f, "is_recommend": True}
                     for f in (1, 2, 900)]        # 中间漏了 890 层
         res.meta = {"goodRate": "100%"}
         res.passes = [Pass(sort_type=2, pages=1)]
@@ -297,6 +300,127 @@ class TestCrawlerConstruction(unittest.TestCase):
         self.assertEqual(r.target_id, "")
 
 
+class TestCrawlOffline(unittest.TestCase):
+    """
+    ★ crawl() 本体的离线测试。
+
+    之前只断言 CrawlResult(...) 能否构造，没真调用 crawl() ——
+    坏在构造参数上被抓到了，坏在函数体里照样漏。
+    用假 _post 把整条链路（双趟合并 / 尾部确认 / floor_id 兜底）跑一遍。
+    """
+
+    def _patch_post(self, pages_by_sort):
+        """pages_by_sort: {sort_type: [page1_data, page2_data, ...]}"""
+        import crawler
+
+        state = {"calls": 0}
+
+        def fake_post(body, timeout=25):
+            st = body["cursor"]["sort_type"]
+            nxt = body["cursor"]["next"]
+            pages = pages_by_sort.get(st, [])
+            idx = 0 if nxt == "" else int(nxt)
+            data = pages[idx] if idx < len(pages) else {"reply_list": [],
+                                                        "cursor": {"next": "",
+                                                                   "has_more": False}}
+            state["calls"] += 1
+            return {"retcode": 0, "data": data}
+
+        original = crawler._post
+        crawler._post = fake_post
+        self.addCleanup(lambda: setattr(crawler, "_post", original))
+        return state
+
+    @staticmethod
+    def _page(rows, nxt, has_more=True):
+        return {"reply_list": rows, "total": 999,
+                "cursor": {"next": nxt, "has_more": has_more,
+                           "sort_type": "SORT_TYPE_FLOOR_DESC"}}
+
+    @staticmethod
+    def _row(reply_id, floor_id, like=0, uid="1", nick="甲"):
+        return {"reply_id": reply_id, "floor_id": floor_id, "content": "c",
+                "created_at": 1792396503, "is_recommend": True,
+                "client_ip": "广东",
+                "reply_stat": {"like_count": str(like), "reply_count": "0"},
+                "user_info": {"uid": uid, "nickname": nick}}
+
+    def test_crawl_merges_two_passes(self):
+        import crawler
+        self._patch_post({
+            crawler.SORT_FLOOR_DESC: [
+                self._page([self._row("1", 1, like=5)], "1"),
+                self._page([self._row("2", 2, like=7)], "2", has_more=False),
+            ],
+            crawler.SORT_HOT: [
+                self._page([self._row("2", 2, like=3)], "1"),
+            ],
+        })
+        r = crawler.crawl("123", delay=0)
+        self.assertEqual(len(r.rows), 2, "两趟重复行应合并")
+        by = {x["floor_id"]: x for x in r.rows}
+        self.assertEqual(by[2]["like"], 7, "点赞数应取两趟最大值")
+
+    def test_crawl_falls_back_to_reply_id_when_floor_missing(self):
+        """
+        ★ floor_id 缺失时，合并主键必须退回 reply_id。
+        否则所有缺 floor_id 的行塌成同一个 key（None），数据静默丢失。
+        """
+        import crawler
+        self._patch_post({
+            crawler.SORT_FLOOR_DESC: [
+                self._page([self._row("r1", None), self._row("r2", None),
+                            self._row("r3", None)], "1"),
+                self._page([], "", has_more=False),
+            ],
+            crawler.SORT_HOT: [],
+        })
+        r = crawler.crawl("123", delay=0)
+        self.assertEqual(len(r.rows), 3,
+                         f"缺 floor_id 的行不该塌成 1 条，实得 {len(r.rows)}")
+        self.assertEqual(r.missing_floor, 3, "缺失数应被记录")
+
+    def test_integrity_does_not_crash_on_missing_floor(self):
+        """
+        ★ 校验器不能先于被校验对象崩溃。
+        floor_id 全为 None 时 span 计算曾直接 TypeError。
+        """
+        import crawler
+        res = crawler.CrawlResult(level_id="1", region="cn_gf01", total=3)
+        res.rows = [{"reply_id": "1", "floor_id": None, "is_recommend": True},
+                    {"reply_id": "2", "floor_id": None, "is_recommend": True},
+                    {"reply_id": "3", "floor_id": None, "is_recommend": True}]
+        res.meta = {"goodRate": "100%"}
+        res.passes = [crawler.Pass(sort_type=crawler.SORT_FLOOR_DESC, pages=1,
+                                   missing_floor=3)]
+        ok, checks = res.integrity()          # 不能抛异常
+        self.assertFalse(checks["floor_id_present"], "缺失 floor_id 应判不通过")
+        self.assertFalse(ok)
+
+    def test_crawl_reports_truncation(self):
+        """max_pages 用尽时要标记 truncated（否则静默停止，不报错）"""
+        import crawler
+        pages = []
+        for i in range(10):                       # 游标递增，不会提前 break
+            pages.append(self._page([self._row(str(i), i)], str(i + 1)))
+        self._patch_post({crawler.SORT_FLOOR_DESC: pages, crawler.SORT_HOT: []})
+        r = crawler.crawl("123", delay=0, max_pages=3)
+        self.assertTrue(any(p.truncated for p in r.passes),
+                        "max_pages 用尽应标记 truncated")
+
+    def test_parse_rows_reads_user_info(self):
+        """
+        ★ uid / 昵称在 user_info 里，不在顶层 —— 读错会全是空值。
+        """
+        import crawler
+        rows = crawler._parse_rows(
+            {"reply_list": [self._row("9", 9, uid="12345", nick="某人")]})
+        self.assertEqual(rows[0]["uid"], "12345")
+        self.assertEqual(rows[0]["user"], "某人")
+        self.assertEqual(rows[0]["ip"], "广东")
+        self.assertTrue(rows[0]["date"].startswith("2026-"))
+
+
 class TestOutputSelfCheck(unittest.TestCase):
 
     def _rows(self):
@@ -350,6 +474,80 @@ class TestOutputSelfCheck(unittest.TestCase):
             wb.save(os.path.join(td, "r.xlsx"))
             hits = _scan_output_for_identities(td, self._rows())
             self.assertTrue(any(k == "昵称" for _, k, _ in hits), hits)
+
+
+class TestLeakCheckerNicknameLength(unittest.TestCase):
+    """★ 回归：2 字昵称（"张三"）曾完全检不出"""
+
+    def _run(self):
+        import subprocess
+        return subprocess.run(
+            [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py")],
+            cwd=ROOT, capture_output=True, text=True)
+
+    def test_two_char_nickname_is_collected(self):
+        """基准数据里的 2 字昵称必须被收进真实身份集合"""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "check_leaks", os.path.join(ROOT, "scripts", "check_leaks.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "ref.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"rows": [{"uid": "111222333", "user": "张三",
+                                     "ip": "广东", "content": "c"}]},
+                          f, ensure_ascii=False)
+            uids, names = mod.load_reference(p)
+            self.assertIn("张三", names, "2 字昵称必须被收集")
+
+    def test_two_char_nickname_leak_is_reported(self):
+        """2 字昵称出现在 user 字段位置 → 必须报泄漏"""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            ref = os.path.join(td, "ref.json")
+            with open(ref, "w", encoding="utf-8") as f:
+                json.dump({"rows": [{"uid": "111222333", "user": "张三",
+                                     "ip": "广东", "content": "c"}]},
+                          f, ensure_ascii=False)
+            probe = os.path.join(ROOT, "fixtures", "_probe_2char.json")
+            with open(probe, "w", encoding="utf-8") as f:
+                json.dump({"rows": [{"uid": "111222333", "user": "张三",
+                                     "ip": "", "content": "c"}]},
+                          f, ensure_ascii=False)
+            try:
+                r = subprocess.run(
+                    [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py"),
+                     ref], cwd=ROOT, capture_output=True, text=True)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn("张三", r.stdout)
+            finally:
+                os.remove(probe)
+
+
+class TestAggregateSheetNotFlagged(unittest.TestCase):
+    """★ 回归：地域分布表（省份级计数）曾被误判为行级 IP 泄漏"""
+
+    def test_aggregate_sheet_is_skipped(self):
+        import shutil
+        import tempfile
+        from openpyxl import Workbook
+        from analyze import _scan_output_for_identities
+        rows = [{"uid": "111222333", "user": "真实昵称甲", "ip": "广东",
+                 "content": "c", "is_recommend": False, "date": "2026-05-01",
+                 "floor_id": 1, "reply_id": "1", "like": 0, "is_template": False}]
+        with tempfile.TemporaryDirectory() as td:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "地域分布"
+            ws.cell(row=3, column=1, value="IP属地")
+            ws.cell(row=3, column=2, value="评论数")
+            ws.cell(row=4, column=1, value="广东")
+            ws.cell(row=4, column=2, value=232)
+            wb.save(os.path.join(td, "r.xlsx"))
+            hits = _scan_output_for_identities(td, rows)
+            self.assertFalse(hits, f"聚合分布表不应被判为泄漏，实得 {hits}")
 
 
 class TestDashboardSections(unittest.TestCase):
