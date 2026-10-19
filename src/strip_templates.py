@@ -14,7 +14,7 @@ import re
 from collections import Counter
 
 # 归一化时剥离的标点与空白（抓"带/不带 ~"的变体）
-_PUNCT = re.compile(r'[~～。，,！!？?、；;：:""''（）()\[\]【】\s·…—\-]')
+_PUNCT = re.compile(r"""[~～。，,！!？?、；;：:""''（）()\[\]【】\s·…—\-]""")
 
 
 def normalize(text):
@@ -98,7 +98,7 @@ def classify_templates(details, extra_templates=None, min_count=8,
         if user_added:
             print(f"  用户补充 {len(user_added)} 条")
         if dup_rate > 15:
-            print(f"  ⚠️ 真实评论重复率 {dup_rate:.1f}% 偏高，可能还有模板变体未探测到")
+            print(f"  [WARN] 真实评论重复率 {dup_rate:.1f}% 偏高，可能还有模板变体未探测到")
 
     return template_set, stats
 

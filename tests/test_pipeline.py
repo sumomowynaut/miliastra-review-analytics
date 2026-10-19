@@ -7,6 +7,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,14 @@ import strip_templates
 import anonymize
 import domain_lexicon
 from crawler import CrawlResult, Pass
+
+
+def run_script(args):
+    """跨平台跑子进程：显式 UTF-8，避免 Windows 默认 GBK 解码失败"""
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    return subprocess.run([sys.executable] + args, cwd=ROOT,
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=env)
 
 
 def mk(n, text, rec=True, date="2026-05-18", like=0, start=0):
@@ -223,7 +232,6 @@ class TestAnonymize(unittest.TestCase):
 
     def test_row_level_ip_leak_is_detected(self):
         """行级 IP（一条评论对应一个省）是泄漏，检查器必须抓到"""
-        import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(ROOT, "fixtures", "_leak_probe.json")
@@ -231,9 +239,7 @@ class TestAnonymize(unittest.TestCase):
                 json.dump({"rows": [{"uid": "u_x", "user": "用户A", "ip": "广东"}]},
                           f, ensure_ascii=False)
             try:
-                r = subprocess.run(
-                    [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py")],
-                    cwd=ROOT, capture_output=True, text=True)
+                r = run_script([os.path.join(ROOT, "scripts", "check_leaks.py")])
                 self.assertNotEqual(r.returncode, 0, r.stdout)
                 self.assertIn("IP属地", r.stdout)
             finally:
@@ -241,7 +247,6 @@ class TestAnonymize(unittest.TestCase):
 
     def test_aggregate_ip_distribution_is_allowed(self):
         """省份级聚合统计（广东 232 条）不指向个人，应当放行"""
-        import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(ROOT, "fixtures", "_agg_probe.json")
@@ -249,9 +254,7 @@ class TestAnonymize(unittest.TestCase):
                 json.dump({"ip_distribution": [["广东", 232], ["江苏", 115]]},
                           f, ensure_ascii=False)
             try:
-                r = subprocess.run(
-                    [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py")],
-                    cwd=ROOT, capture_output=True, text=True)
+                r = run_script([os.path.join(ROOT, "scripts", "check_leaks.py")])
                 self.assertEqual(r.returncode, 0, r.stdout)
             finally:
                 os.remove(p)
@@ -456,6 +459,7 @@ class TestOutputSelfCheck(unittest.TestCase):
                 ws.cell(row=4, column=6, value="广东")
             p = os.path.join(td, "r.xlsx")
             wb.save(p)
+            wb.close()
             hits = _scan_output_for_identities(td, self._rows())
             self.assertTrue(hits, "Excel 中的真实昵称/UID/IP 应被抓到")
 
@@ -472,6 +476,7 @@ class TestOutputSelfCheck(unittest.TestCase):
             ws.cell(row=3, column=4, value="用户")
             ws.cell(row=4, column=4, value="真实昵称甲")
             wb.save(os.path.join(td, "r.xlsx"))
+            wb.close()
             hits = _scan_output_for_identities(td, self._rows())
             self.assertTrue(any(k == "昵称" for _, k, _ in hits), hits)
 
@@ -480,10 +485,7 @@ class TestLeakCheckerNicknameLength(unittest.TestCase):
     """★ 回归：2 字昵称（"张三"）曾完全检不出"""
 
     def _run(self):
-        import subprocess
-        return subprocess.run(
-            [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py")],
-            cwd=ROOT, capture_output=True, text=True)
+        return run_script([os.path.join(ROOT, "scripts", "check_leaks.py")])
 
     def test_two_char_nickname_is_collected(self):
         """基准数据里的 2 字昵称必须被收进真实身份集合"""
@@ -503,7 +505,6 @@ class TestLeakCheckerNicknameLength(unittest.TestCase):
 
     def test_two_char_nickname_leak_is_reported(self):
         """2 字昵称出现在 user 字段位置 → 必须报泄漏"""
-        import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             ref = os.path.join(td, "ref.json")
@@ -517,9 +518,8 @@ class TestLeakCheckerNicknameLength(unittest.TestCase):
                                      "ip": "", "content": "c"}]},
                           f, ensure_ascii=False)
             try:
-                r = subprocess.run(
-                    [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py"),
-                     ref], cwd=ROOT, capture_output=True, text=True)
+                r = run_script([os.path.join(ROOT, "scripts", "check_leaks.py"),
+                                ref])
                 self.assertNotEqual(r.returncode, 0, r.stdout)
                 self.assertIn("张三", r.stdout)
             finally:
@@ -546,6 +546,7 @@ class TestAggregateSheetNotFlagged(unittest.TestCase):
             ws.cell(row=4, column=1, value="广东")
             ws.cell(row=4, column=2, value=232)
             wb.save(os.path.join(td, "r.xlsx"))
+            wb.close()
             hits = _scan_output_for_identities(td, rows)
             self.assertFalse(hits, f"聚合分布表不应被判为泄漏，实得 {hits}")
 
@@ -603,6 +604,78 @@ class TestDashboardSections(unittest.TestCase):
 
 # ------------------------------------------------------------ 领域词典
 
+class TestClustering(unittest.TestCase):
+    """★ 回归：泛词抢先命中、整句否定误删、重叠信息丢失"""
+
+    def _rows(self, *texts):
+        return [{"content": t, "is_recommend": False, "date": "2026-10-01",
+                 "like": 0, "uid": str(i), "user": f"u{i}", "ip": "",
+                 "floor_id": i + 1, "reply_id": str(i)}
+                for i, t in enumerate(texts)]
+
+    def test_specific_keyword_beats_generic_one(self):
+        """「卡顿」必须归入性能；不能因为「卡」先匹配就永远归操作手感"""
+        import analyze as mod
+        stats, _ = mod.cluster_topics(self._rows("卡顿得没法玩"))
+        by = {s["category"]: s["count"] for s in stats}
+        self.assertEqual(by.get("性能与稳定性"), 1, stats)
+        self.assertNotIn("操作手感", by, stats)
+
+    def test_negated_defect_is_not_a_complaint(self):
+        """「一点都不卡」是好评，不应算成操作手感"""
+        import analyze as mod
+        stats, cov = mod.cluster_topics(self._rows("一点都不卡"))
+        self.assertEqual(sum(s["count"] for s in stats), 0, stats)
+        self.assertEqual(cov["unmatched"], 1)
+
+    def test_mixed_sentiment_is_kept(self):
+        """★ 回归：整句含「不错」曾把「但是太卡」一起丢掉"""
+        import analyze as mod
+        stats, _ = mod.cluster_topics(self._rows("画面不错，但是太卡"))
+        by = {s["category"]: s["count"] for s in stats}
+        self.assertEqual(by.get("操作手感"), 1, stats)
+
+    def test_no_difficulty_is_still_a_complaint(self):
+        """「没难度」是差评（太简单），不能被当成正面否定剔除"""
+        import analyze as mod
+        stats, _ = mod.cluster_topics(self._rows("太简单了，没难度"))
+        by = {s["category"]: s["count"] for s in stats}
+        self.assertEqual(by.get("关卡设计"), 1, stats)
+
+    def test_overlap_is_recorded(self):
+        """多类别命中时保留主类别，同时记录重叠类别"""
+        import analyze as mod
+        stats, cov = mod.cluster_topics(self._rows("卡顿而且按钮点不动"))
+        self.assertEqual(cov["multi_label"], 1)
+        self.assertEqual(stats[0]["category"], "性能与稳定性", stats)
+        self.assertIn("ui与交互", stats[0]["overlap"])
+
+
+class TestIpDistribution(unittest.TestCase):
+
+    def test_templates_are_excluded(self):
+        """★ 回归：地域分布曾把 54% 的模板评论算进去"""
+        import analyze as mod
+        rows = [{"ip": "广东"}, {"ip": "广东"}, {"ip": "江苏"}]
+        out = mod._ip_distribution(rows, [True, False, False])
+        self.assertEqual(out, [("广东", 1), ("江苏", 1)])
+
+
+class TestPseudonymIsNotIdentity(unittest.TestCase):
+
+    def test_anonymized_input_does_not_raise_false_leak(self):
+        """★ 回归：用已脱敏数据复现时，伪名曾被当成真实昵称稳定误报"""
+        import analyze as mod
+        rows = [{"uid": "u_0123456789", "user": "用户AA", "ip": ""}]
+        with tempfile.TemporaryDirectory() as td:
+            with open(os.path.join(td, "a.json"), "w", encoding="utf-8") as f:
+                json.dump({"rows": [{"uid": "u_0123456789",
+                                     "user": "用户AA"}]}, f,
+                          ensure_ascii=False)
+            hits = mod._scan_output_for_identities(td, rows)
+            self.assertEqual(hits, [])
+
+
 class TestDomainLexicon(unittest.TestCase):
 
     def test_merges_without_overwriting(self):
@@ -642,6 +715,25 @@ def _analysis_stub():
 
 
 class TestDeliverables(unittest.TestCase):
+
+    def test_excel_does_not_hardcode_case_rate(self):
+        """★ 回归：Excel 曾无条件写死「官方公布的 79.2%」"""
+        from excel_report import build_excel
+        from openpyxl import load_workbook
+        rows = mk(20, "系统模板", rec=True) + mk(10, "真实评论", rec=False)
+        strip_templates.classify_templates(rows, verbose=False)
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "r.xlsx")
+            build_excel(_analysis_stub(), rows, p, level_id="1", title="t",
+                        meta={})
+            wb = load_workbook(p)
+            try:
+                values = [str(c.value or "") for c in wb["概览"]["A"]]
+            finally:
+                wb.close()
+            text = "\n".join(values)
+            self.assertNotIn("79.2", text)
+            self.assertIn("66.7", text)
 
     def test_dashboard_is_self_contained(self):
         from dashboard import build_dashboard, verify_dashboard

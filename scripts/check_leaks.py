@@ -93,7 +93,7 @@ def main():
         uids, names = load_reference(ref_path)
         print(f"基准数据: {len(uids)} 个 UID, {len(names)} 个昵称")
     else:
-        print("⚠️  未提供基准数据，仅做通用模式检查")
+        print("[WARN] 未提供基准数据，仅做通用模式检查")
 
     leaks = []
     checked = 0
@@ -183,7 +183,7 @@ def main():
 
     print(f"检查 {checked} 个文件\n")
     if leaks:
-        print("❌ 发现潜在泄漏：")
+        print("[FAIL] 发现潜在泄漏：")
         seen = set()
         for rel, kind, val in leaks:
             key = (rel, kind, val)
@@ -192,10 +192,10 @@ def main():
             seen.add(key)
             print(f"   [{kind}] '{val}'  →  {rel}")
         print("\n处理：把该文件加入 .gitignore，或重新脱敏。")
-        print("⚠️  注意 —— Git 历史不可撤回，误提交后需用 git filter-repo 重写。")
+        print("[WARN] 注意 —— Git 历史不可撤回，误提交后需用 git filter-repo 重写。")
         return 1
 
-    print("✅ 未发现真实用户信息泄漏")
+    print("[OK] 未发现真实用户信息泄漏")
     return 0
 
 

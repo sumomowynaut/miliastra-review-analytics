@@ -42,10 +42,10 @@ def main():
     args = ap.parse_args()
 
     if args.delay < 0.2:
-        print("⚠️  delay < 0.2s 可能触发风控，已强制提升至 0.2s")
+        print("[WARN] delay < 0.2s 可能触发风控，已强制提升至 0.2s")
         args.delay = 0.2
 
-    print(f"🌐 抓取 {args.level_id} (region={args.region}, delay={args.delay}s)")
+    print(f"[CRAWL] 抓取 {args.level_id} (region={args.region}, delay={args.delay}s)")
     print("   预计 1-3 分钟，请勿并发运行\n")
 
     res = crawl(args.level_id, args.region, args.delay,
@@ -57,7 +57,7 @@ def main():
     print("完整性校验：")
     for key, desc in PASS_RULES:
         val = checks.get(key)
-        mark = "✅" if val else ("—" if val is None else "❌")
+        mark = "[OK]" if val else ("[-]" if val is None else "[FAIL]")
         print(f"  {mark} {desc}")
 
     print("\n各趟明细：")
@@ -82,9 +82,9 @@ def main():
 
     print(f"\n已写入 {args.out}")
     if not ok:
-        print("\n⚠️  完整性校验未通过 —— 请先排查翻页问题，不要直接用于分析")
+        print("\n[WARN] 完整性校验未通过 —— 请先排查翻页问题，不要直接用于分析")
         return 1
-    print("✅ 完整性校验通过")
+    print("[OK] 完整性校验通过")
     return 0
 
 

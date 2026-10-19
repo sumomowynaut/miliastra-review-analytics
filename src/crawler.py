@@ -311,6 +311,7 @@ def crawl(level_id, region="cn_gf01", delay=DEFAULT_DELAY, target_id=None,
         res.meta = fetch_meta(level_id, region)
     except Exception:
         res.meta = {}
+    res.meta.setdefault("region", region)
 
     # 评论列表的 total
     try:
@@ -366,6 +367,7 @@ def fetch_meta(level_id, region="cn_gf01"):
     ld = ((rm.get("level_detail") or {}).get("data") or {})
     li = ld.get("level_detail_response", {}).get("level_info", {}) or {}
     return {
+        "region": region,
         "level_id": li.get("level_id"),
         "name": li.get("level_name"),
         "description": li.get("desc"),
@@ -391,7 +393,7 @@ if __name__ == "__main__":
     print(f"抓取 {len(r.rows)}/{r.total} 条 | degraded={r.degraded} "
           f"| missing_floor={r.missing_floor}")
     for k, v in checks.items():
-        print(f"  {'✅' if v else '❌'} {k}")
+        print(f"  {'[OK]' if v else '[FAIL]'} {k}")
     for p in r.passes:
         print(f"  pass sort={p.sort_type} pages={p.pages} "
               f"missing_floor={p.missing_floor} error={p.error}")
@@ -406,4 +408,4 @@ if __name__ == "__main__":
         }, f, ensure_ascii=False, indent=2)
     print(f"\n已写入 {args.out}")
     if not ok:
-        print("⚠️  完整性校验未通过 —— 请先排查翻页问题，不要直接交付")
+        print("[WARN] 完整性校验未通过 —— 请先排查翻页问题，不要直接交付")

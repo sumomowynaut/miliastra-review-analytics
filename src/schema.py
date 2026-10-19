@@ -68,9 +68,14 @@ def _norm_date(v):
 
 def normalize_row(row):
     """把一条原始记录映射到标准 schema"""
+    # floor_id 缺失时保留 None，不要降级成 0 ——
+    # 0 是合法楼层号，混用会丢失「这条缺楼层」的信息。
+    floor_raw = _first(row, ALIASES["floor_id"], None)
+    floor_id = (None if floor_raw in (None, "")
+                else _to_int(floor_raw))
     out = {
         "reply_id": str(_first(row, ALIASES["reply_id"], "")),
-        "floor_id": _to_int(_first(row, ALIASES["floor_id"], 0)),
+        "floor_id": floor_id,
         "uid": str(_first(row, ALIASES["uid"], "")),
         "user": str(_first(row, ALIASES["user"], "")),
         "content": str(_first(row, ALIASES["content"], "")),
@@ -97,6 +102,6 @@ def validate_schema(details):
         issues.append(f"{sum(1 for d in details if not d['content'])} 条缺正文")
     if len({d["reply_id"] for d in details}) != len(details):
         issues.append("reply_id 不唯一")
-    if any(d["floor_id"] == 0 for d in details):
-        issues.append(f"{sum(1 for d in details if d['floor_id']==0)} 条缺 floor_id")
+    if any(d["floor_id"] in (None, 0) for d in details):
+        issues.append(f"{sum(1 for d in details if d['floor_id'] in (None, 0))} 条缺 floor_id")
     return issues

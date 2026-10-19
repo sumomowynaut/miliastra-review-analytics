@@ -139,7 +139,7 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 ├── scripts/
 │   ├── build_example.py    # 生成可公开的案例
 │   └── check_leaks.py      # ★ 提交前脱敏泄漏检查（CI 关卡）
-├── tests/                  # 41 项单元测试，零额外依赖
+├── tests/                  # 49 项单元测试，零额外依赖
 ├── .github/workflows/      # CI：测试 → 端到端 → 产出校验 → 泄漏检查
 └── out/                    # 产出（gitignored）
 ```

@@ -100,12 +100,17 @@ def build_excel(analysis, details, out_path, level_id="", title="",
 
     ws.cell(row=row, column=1, value="重要提示").font = WARN
     row += 1
+    # ★ 这里曾写死案例数字（官方公布的 79.2%），换一个奇域就会输出错误结论。
+    #   有官方口径就用官方的，没有就用本报告算出的表观口径。
+    official_rate = _fmt_rate((meta or {}).get("goodRate"))
+    apparent_label = (f"官方公布的 {official_rate}" if official_rate
+                      else f"表观好评率 {ap['good_rate']:.1f}%")
     for line in [
         "· 表观口径（含系统模板）用于与官方公布的好评率对齐，两者一致可证明数据完整。",
         "· 真实口径（已剥离模板）才反映玩家实际评价，差异 "
         f"{rates['delta_bad_rate']:.1f} 个百分点。",
         "· 所有分布、聚类、趋势结论均基于真实评论。",
-        "· 官方公布的 79.2% 是含模板口径，不宜直接用于判断真实体验。",
+        f"· {apparent_label} 是含模板口径，不宜直接用于判断真实体验。",
     ]:
         c = ws.cell(row=row, column=1, value=line)
         c.font = T_FONT
@@ -282,14 +287,31 @@ def verify_excel(path, expect_sheets=7):
     """交付前校验 —— 实际重新打开检查"""
     from openpyxl import load_workbook
     wb = load_workbook(path)
-    issues = []
-    if len(wb.sheetnames) != expect_sheets:
-        issues.append(f"工作表数量 {len(wb.sheetnames)} != {expect_sheets}")
-    for ws in wb.worksheets:
-        if ws.max_row < 2:
-            issues.append(f"{ws.title} 为空")
-    # 中文乱码抽检
-    ws = wb.worksheets[0]
-    if ws.max_row >= 2 and "�" in str(ws.cell(row=1, column=1).value or ""):
-        issues.append("概览表头疑似乱码")
-    return issues
+    try:
+        issues = []
+        if len(wb.sheetnames) != expect_sheets:
+            issues.append(f"工作表数量 {len(wb.sheetnames)} != {expect_sheets}")
+        for ws in wb.worksheets:
+            if ws.max_row < 2:
+                issues.append(f"{ws.title} 为空")
+        # 中文乱码抽检
+        ws = wb.worksheets[0]
+        if ws.max_row >= 2 and "�" in str(ws.cell(row=1, column=1).value or ""):
+            issues.append("概览表头疑似乱码")
+        return issues
+    finally:
+        # Windows 下不关句柄会锁住文件，导致后续删除/覆盖失败
+        wb.close()
+
+
+def _fmt_rate(value):
+    """把官方好评率统一成「79.2%」形式，避免输出 79.177545691906"""
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    if s.endswith("%"):
+        return s
+    try:
+        return f"{float(s):.1f}%"
+    except (TypeError, ValueError):
+        return s

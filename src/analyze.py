@@ -17,7 +17,7 @@ import argparse
 import json
 import os
 import sys
-import random
+import re
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -56,13 +56,62 @@ CATEGORIES = {
                     "rz", "屑", "难看", "烂", "有病", "什么玩意", "做的啥"],
 }
 
-# 否定语义 —— 命中关键词但语义为正面，必须剔除（否则好评会被误判为差评）
-NEGATION = ["不卡", "不好玩", "没难度", "不无聊", "不错", "还行", "不卡顿",
-            "没有bug", "没bug", "不简单", "不难", "可以", "满意", "推荐"]
+# 否定语境 —— 只否定「缺陷本身」，不能把整句丢掉。
+#
+# 旧实现只要评论里出现「不错 / 还行 / 没难度」就把整条从类别里删除，
+# 导致「画面不错但太卡」这类混合评价被静默丢弃，覆盖率还把这条算作已覆盖。
+# 正确做法：只判断关键词所在的那个短语是否被否定成正面表述。
+#
+# 注意：「没难度」「不好玩」仍然是差评（只是换了维度），不能算正面。
+NEGATED_DEFECTS = {
+    "不卡", "不卡顿", "不闪退", "不崩溃", "不延迟", "不掉帧",
+    "没有卡顿", "没卡顿", "没有闪退", "没闪退",
+    "没有崩溃", "没崩溃", "没有延迟", "没延迟",
+    "没有掉帧", "没掉帧", "没有bug", "没bug",
+    "不无聊", "不单调",
+}
+
+
+def _strip_negated_defects(text):
+    """
+    先移除「不卡」「没有卡顿」这类正面表述，再做关键词匹配。
+
+    这样「没有卡顿」不会因为包含「卡」而被算成操作手感；
+    同一句里别处的「太卡了」仍然会保留下来。
+    """
+    for phrase in sorted(NEGATED_DEFECTS, key=len, reverse=True):
+        text = text.replace(phrase, " ")
+    return text
+
+
+def _match_categories(text, cats):
+    """返回 {类别: [命中的关键词, ...]} —— 允许一条评论命中多个类别"""
+    text = _strip_negated_defects(text)
+    hits = {}
+    for cat, kws in cats.items():
+        matched = [k for k in kws if k.lower() in text]
+        if matched:
+            hits[cat] = matched
+    return hits
+
+
+def _primary_category(hits):
+    """
+    多类别命中时选一个主类别：
+      1. 最长关键词优先（更具体的语义优先于「卡」这类泛词）
+      2. 同长度时命中词更多者优先
+      3. 再按词典顺序稳定排序
+    其余命中类别记录在 overlap 里，供人工复核。
+    """
+    ranked = []
+    for order, (cat, matched) in enumerate(hits.items()):
+        ranked.append((max(len(k) for k in matched), len(matched), -order, cat))
+    ranked.sort(reverse=True)
+    return ranked[0][3]
 
 
 def cluster_topics(negative_rows, domain=None, categories=None):
-    """痛点聚类：词典召回 + 否定剔除 + 未命中率报告"""
+    """痛点聚类：词典召回 + 逐词否定剔除 + 重叠记录 + 未命中率报告"""
     cats = categories or CATEGORIES
     if domain:
         cats = domain_lexicon.merge_categories(cats, domain)
@@ -71,6 +120,8 @@ def cluster_topics(negative_rows, domain=None, categories=None):
     matched = {c: [] for c in cats}
     unmatched = []
     emotional = []
+    overlap_rows = 0
+    overlap_by_row = {}
 
     for d in negative_rows:
         text = (d.get("content") or "").lower()
@@ -78,22 +129,17 @@ def cluster_topics(negative_rows, domain=None, categories=None):
         if any(w.lower() in text for w in ignore):
             emotional.append(d)
             continue
-        hit = None
-        for cat, kws in cats.items():
-            if any(k.lower() in text for k in kws):
-                hit = cat
-                break
-        if hit:
-            matched[hit].append(d)
-        else:
-            unmatched.append(d)
 
-    # 否定剔除
-    for cat in matched:
-        matched[cat] = [
-            d for d in matched[cat]
-            if not any(n in (d.get("content") or "").lower() for n in NEGATION)
-        ]
+        hits = _match_categories(text, cats)
+        if not hits:
+            unmatched.append(d)
+            continue
+
+        primary = _primary_category(hits)
+        matched[primary].append(d)
+        if len(hits) > 1:
+            overlap_rows += 1
+            overlap_by_row[id(d)] = [c for c in hits if c != primary]
 
     # 计数与未命中率
     total = len(negative_rows)
@@ -105,6 +151,9 @@ def cluster_topics(negative_rows, domain=None, categories=None):
             "category": cat,
             "count": len(rows),
             "pct_of_negative": len(rows) / total * 100 if total else 0,
+            "overlap": sorted({
+                c for d in rows for c in (overlap_by_row.get(id(d)) or [])
+            }),
             "samples": [
                 {"date": r.get("date", "")[:10], "text": (r.get("content") or "")[:60]}
                 for r in sorted(rows, key=lambda x: -x.get("like", 0))[:3]
@@ -122,8 +171,11 @@ def cluster_topics(negative_rows, domain=None, categories=None):
         "emotional": len(emotional),
         "classifiable": classifiable,
         "coverage": coverage,
-        "coverage_note": ("⚠️ 覆盖率偏低，词典需补充"
-                          if coverage < 70 else "✅ 覆盖率可接受"),
+        "multi_label": overlap_rows,
+        "multi_label_pct": (overlap_rows / len(negative_rows) * 100
+                            if negative_rows else 0),
+        "coverage_note": ("[WARN] 覆盖率偏低，词典需补充"
+                          if coverage < 70 else "[OK] 覆盖率可接受"),
         "unmatched_samples": [
             {"date": u.get("date", "")[:10], "text": (u.get("content") or "")[:60]}
             for u in unmatched[:5]
@@ -170,9 +222,10 @@ def analyze(details, extra_templates=None, domain=None):
     }
 
 
-def _ip_distribution(original_details, top=15):
+def _ip_distribution(original_details, template_flags=None, top=15):
     """
     省份级聚合分布 —— 从**脱敏前**的原始数据算。
+    只统计真实评论（template_flags=False），模板评论不参与分布。
 
     为什么要分开算：
       · 行级 IP（"这条评论来自广东"）= 个人身份，必须移除
@@ -181,8 +234,11 @@ def _ip_distribution(original_details, top=15):
     如果先脱敏再算，这个功能就整个消失了 —— 那是把"删个人信息"做成了"删功能"。
     """
     from collections import Counter
-    c = Counter(d.get("ip") for d in original_details
-                if d.get("ip"))
+    rows = original_details
+    if template_flags is not None:
+        rows = [d for d, is_tpl in zip(original_details, template_flags)
+                if not is_tpl]
+    c = Counter(d.get("ip") for d in rows if d.get("ip"))
     return c.most_common(top)
 
 
@@ -197,8 +253,15 @@ def _scan_output_for_identities(outdir, original_details):
     判定标准：只有「与具体评论绑定的身份」才算泄漏。
       地域分布这类聚合结果（某省 111 条）不视为身份泄漏 —— 它不指向个人。
     """
-    real_uids = {str(d.get("uid", "")) for d in original_details if d.get("uid")}
-    real_names = {d.get("user", "") for d in original_details if d.get("user")}
+    # ★ 已脱敏的输入不能再当作「真实身份基准」——
+    #   否则伪名（用户AA）会被当成真实昵称，重跑时稳定产生假泄漏。
+    PSEUDO_UID = re.compile(r"^u_[0-9a-f]{10}$")
+    PSEUDO_NAME = re.compile(r"^用户[A-Z0-9]+$")
+
+    real_uids = {str(d.get("uid", "")) for d in original_details
+                 if d.get("uid") and not PSEUDO_UID.match(str(d.get("uid", "")))}
+    real_names = {d.get("user", "") for d in original_details
+                  if d.get("user") and not PSEUDO_NAME.match(d.get("user", ""))}
     real_ips = {d.get("ip", "") for d in original_details if d.get("ip")}
 
     ID_KEYS = ("uid", "user", "ip")
@@ -247,40 +310,42 @@ def _scan_output_for_identities(outdir, original_details):
                 try:
                     from openpyxl import load_workbook
                     wb = load_workbook(path, read_only=True)
-                    for ws in wb.worksheets:
-                        # ★ 聚合表（地域分布）跳过 —— 它的表头也是「IP属地」，
-                        #   但内容是省份级计数（广东 232 条），不指向个人。
-                        #   与 scripts/check_leaks.py 保持同一套判定。
-                        if "地域" in (ws.title or ""):
-                            continue
-                        rows = list(ws.iter_rows(values_only=True))
-                        # ★ 表头不一定在第 1 行 —— 本项目的 Excel 前两行是标题/副标题，
-                        #   表头在第 3 行。必须自动定位，否则整个 Excel 检查形同虚设。
-                        header = None
-                        body_start = 0
-                        for i, r in enumerate(rows[:10]):
-                            labels = {str(c).strip() for c in (r or []) if c}
-                            if labels & {"用户", "UID", "IP属地"}:
-                                header = r
-                                body_start = i + 1
-                                break
-                        if not header:
-                            continue
-                        # 只检查身份列：用户 / UID / IP属地
-                        idx = {i: str(h).strip() for i, h in enumerate(header or [])
-                               if h and str(h).strip() in ("用户", "UID", "IP属地")}
-                        if not idx:
-                            continue
-                        for row in rows[body_start:]:
-                            for i, kind in idx.items():
-                                if i < len(row):
-                                    check_value(row[i], kind, path)
+                    try:
+                        for ws in wb.worksheets:
+                            # ★ 聚合表（地域分布）跳过 —— 它的表头也是「IP属地」，
+                            #   但内容是省份级计数（广东 232 条），不指向个人。
+                            #   与 scripts/check_leaks.py 保持同一套判定。
+                            if "地域" in (ws.title or ""):
+                                continue
+                            rows = list(ws.iter_rows(values_only=True))
+                            # ★ 表头不一定在第 1 行 —— 本项目的 Excel 前两行是标题/副标题，
+                            #   表头在第 3 行。必须自动定位，否则整个 Excel 检查形同虚设。
+                            header = None
+                            body_start = 0
+                            for i, r in enumerate(rows[:10]):
+                                labels = {str(c).strip() for c in (r or []) if c}
+                                if labels & {"用户", "UID", "IP属地"}:
+                                    header = r
+                                    body_start = i + 1
+                                    break
+                            if not header:
+                                continue
+                            # 只检查身份列：用户 / UID / IP属地
+                            idx = {i: str(h).strip() for i, h in enumerate(header or [])
+                                   if h and str(h).strip() in ("用户", "UID", "IP属地")}
+                            if not idx:
+                                continue
+                            for row in rows[body_start:]:
+                                for i, kind in idx.items():
+                                    if i < len(row):
+                                        check_value(row[i], kind, path)
+                    finally:
+                        wb.close()
                 except Exception:
                     continue
 
             elif fn.endswith(".html"):
                 # 看板把数据嵌在 JS 里，按 "uid"/"user"/"ip" 字段模式定位
-                import re
                 try:
                     with open(path, encoding="utf-8") as f:
                         content = f.read()
@@ -325,16 +390,17 @@ def main():
         with open(args.raw, encoding="utf-8") as f:
             blob = json.load(f)
         details = schema_mod.normalize_all(blob["rows"])
-        meta = blob.get("meta", {})
+        meta = blob.get("meta") or {}
+        meta.setdefault("region", args.region)
         level_id = blob.get("level_id", "unknown")
         title = meta.get("title", "") or meta.get("name", "")
-        print(f"📂 载入 {args.raw}: {len(details)} 条")
+        print(f"[LOAD] 载入 {args.raw}: {len(details)} 条")
         if blob.get("degraded"):
-            print("⚠️  该次抓取被标记为 degraded —— 数据可能缺失，结论需谨慎")
+            print("[WARN] 该次抓取被标记为 degraded —— 数据可能缺失，结论需谨慎")
         if blob.get("checks"):
             bad = [k for k, v in blob["checks"].items() if v is False]
             if bad:
-                print(f"⚠️  抓取时校验未通过: {bad}")
+                print(f"[WARN] 抓取时校验未通过: {bad}")
     elif args.fixture:
         with open(args.fixture, encoding="utf-8") as f:
             blob = json.load(f)
@@ -342,24 +408,26 @@ def main():
         details = schema_mod.normalize_all(raw)
         issues = schema_mod.validate_schema(details)
         if issues:
-            print("⚠️  schema 校验:", issues)
-        meta = blob.get("meta", {}) if isinstance(blob, dict) else {}
+            print("[WARN] schema 校验:", issues)
+        meta = (blob.get("meta") or {}) if isinstance(blob, dict) else {}
+        meta.setdefault("region", args.region)
         level_id = blob.get("level_id", "fixture") if isinstance(blob, dict) else "fixture"
         title = blob.get("title", "") if isinstance(blob, dict) else ""
-        print(f"📦 使用 fixture: {len(details)} 条")
+        print(f"[LOAD] 使用 fixture: {len(details)} 条")
     else:
-        print(f"🌐 抓取 {args.level_id} ...（约需 1-3 分钟）")
+        print(f"[CRAWL] 抓取 {args.level_id} ...（约需 1-3 分钟）")
         res = crawl(args.level_id, args.region, args.delay)
         details = res.rows
         meta = res.meta
+        meta.setdefault("region", args.region)
         level_id = args.level_id
         title = meta.get("title", "") or meta.get("name", "")
         ok, checks = res.integrity()
         print(f"抓取 {len(details)}/{res.total} 条 | degraded={res.degraded}")
         for k, v in checks.items():
-            print(f"  {'✅' if v else '❌'} {k}")
+            print(f"  {'[OK]' if v else '[FAIL]'} {k}")
         if not ok:
-            print("⚠️  完整性校验未通过 —— 数据可能有缺失，分析结果不可信")
+            print("[WARN] 完整性校验未通过 —— 数据可能有缺失，分析结果不可信")
 
     domain = domain_lexicon.load_domain_lexicon(args.domain_lexicon)
     extra_templates = list(extra)
@@ -371,7 +439,7 @@ def main():
     # 工具必须强制执行自己的方法论，所以默认脱敏全部产出（Excel / 看板 / analysis.json）。
     # 确需保留身份（本地排查、回复某个用户）时用 --keep-identities 显式关闭。
     if args.keep_identities:
-        print("⚠️  已指定 --keep-identities：产出将包含真实 UID / 昵称 / IP 属地，"
+        print("[WARN] 已指定 --keep-identities：产出将包含真实 UID / 昵称 / IP 属地，"
               "仅供本地使用，切勿直接对外分享")
         pub_details = details
     else:
@@ -382,9 +450,11 @@ def main():
     result = analyze(pub_details, extra_templates=extra_templates, domain=domain)
 
     # 地域分布用脱敏前的原始数据算聚合统计（不指向个人），
-    # 覆盖掉 analyze() 基于脱敏数据得到的空结果
+    # 覆盖掉 analyze() 基于脱敏数据得到的空结果。
+    # ★ 只统计真实评论：模板评论不参与任何分布类统计（methodology/02）。
     if not args.keep_identities:
-        result["ip_distribution"] = _ip_distribution(details)
+        template_flags = [d.get("is_template") for d in pub_details]
+        result["ip_distribution"] = _ip_distribution(details, template_flags)
 
     outdir = os.path.join(args.outdir, str(level_id))
     os.makedirs(outdir, exist_ok=True)
@@ -397,33 +467,33 @@ def main():
     build_excel(result, pub_details, xlsx_path, level_id=level_id, title=title,
                 meta=meta)
     xissues = verify_excel(xlsx_path)
-    print(f"📊 Excel → {xlsx_path}" + (f"  ⚠️ {xissues}" if xissues else "  ✅ 校验通过"))
+    print(f"[EXCEL] → {xlsx_path}" + (f"  [WARN] {xissues}" if xissues else "  [OK] 校验通过"))
 
     # 看板
     html_path = os.path.join(outdir, f"千星奇域{level_id}_看板.html")
     build_dashboard(result, pub_details, html_path, level_id=level_id, title=title,
                     meta=meta)
     hissues = verify_dashboard(html_path)
-    print(f"📈 看板 → {html_path}" + (f"  ⚠️ {hissues}" if hissues else "  ✅ 自包含校验通过"))
+    print(f"[DASH] → {html_path}" + (f"  [WARN] {hissues}" if hissues else "  [OK] 自包含校验通过"))
 
     # 脱敏后的完整数据
     with open(os.path.join(outdir, "raw_public.json"), "w", encoding="utf-8") as f:
         json.dump({"level_id": level_id, "meta": meta,
                    "note": "UID 已哈希，昵称已替换，IP 属地已移除；评论正文为玩家原话",
                    "rows": pub_details}, f, ensure_ascii=False, indent=2)
-    print(f"🔒 脱敏数据: {outdir}/raw_public.json")
+    print(f"[MASK] 脱敏数据: {outdir}/raw_public.json")
 
     if not args.keep_identities:
         # 自检：产出目录里是否还残留真实身份
         leak = _scan_output_for_identities(outdir, details)
         if leak:
-            print(f"⚠️  产出目录检测到 {len(leak)} 处身份残留 —— 请排查")
+            print(f"[WARN] 产出目录检测到 {len(leak)} 处身份残留 —— 请排查")
             for h in leak:
                 print("   ", h)
         else:
-            print("✅ 产出自检：未发现真实 UID / 昵称 / IP 属地")
+            print("[OK] 产出自检：未发现真实 UID / 昵称 / IP 属地")
 
-    print(f"\n✅ 分析完成 → {outdir}/")
+    print(f"\n[DONE] 分析完成 → {outdir}/")
 
     r = result["meta"]["rates"]
     print(f"\n表观好评率 {r['apparent']['good_rate']:.1f}% "
