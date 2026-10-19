@@ -1,0 +1,28 @@
+# 数据产出 —— 绝不入库
+out/
+out_*/
+data/
+*.xlsx
+!templates/*.xlsx
+!examples/**/*.xlsx
+*.html
+!examples/**/*.html
+raw*.json
+!fixtures/*.json
+!templates/*.json
+!examples/**/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+
+# 推送载荷生成物
+push_payload.json
