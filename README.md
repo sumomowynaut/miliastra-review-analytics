@@ -168,6 +168,31 @@ bash scripts/ci.sh
 
 ---
 
+## 公开接口契约
+
+抓取器用的是米游社公开接口，契约如下（2026-10-19 实测确认）：
+
+```
+POST https://bbs-api.miyoushe.com/community/ugc_community/web/api/reply/list?lang=zh-cn
+Content-Type: application/json;charset=UTF-8
+必要头：X-Rpc-Language / Origin / Referer / x-rpc-client_type / x-rpc-device_id
+
+body  {"uid":"", "region":"cn_gf01", "level_id":"<ID>",
+        "cursor":{"next":"", "size":20, "sort_type":"SORT_TYPE_FLOOR_DESC"}}
+
+响应  data.reply_list[] · data.total · data.cursor{next, has_more, sort_type}
+```
+
+行字段里 **`uid` / 昵称在 `user_info` 里**（不在顶层），`created_at` 是 unix 秒，
+`client_ip` 是省级，`reply_stat.like_count` 是字符串。
+
+元信息（热度 / 官方好评率 / 关卡名）走另一个接口
+`/community/ugc_community/web/api/level/full/info`，请求体的键是 **`agg_req_list`**
+（不是 `api_name_list`，写错会返回空 `resp_map`）。
+
+> ⚠️ 契约变了就要改代码 —— 但**方法论文档不会失效**。
+> 那些讲的是"怎么判断数据可不可信"，跟接口无关。
+
 ## 使用约束与免责
 
 - 本项目通过**米游社公开接口**获取公开评论数据，仅供技术研究与学习。
