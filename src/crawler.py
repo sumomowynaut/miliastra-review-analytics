@@ -17,8 +17,8 @@
 设计原则（来自 methodology/01-data-integrity.md）：
   · 双趟排序合并（FLOOR_DESC + HOT），单趟会漏 10%
   · 每页重试 3 次，失败不 break
-  · 合并时点赞数取 max，不覆盖
-  · has_more 提前变 false 时多跑 2 页确认游标成环
+  · 合并时点赞数取最大值，避免覆盖
+  · has_more 提前变 false 时额外请求 2 页确认游标成环
   · floor_id 缺失时合并主键退回 reply_id，并计数上报
   · 每趟独立记录 pages / error / missing_floor，最终判定 degraded
 
@@ -86,7 +86,7 @@ class Pass:
 
     @property
     def ok(self):
-        # 达到 max_pages 而被截断，也算这一趟没有完整跑完
+        # 达到 max_pages 而被截断，也算这一趟没有完整执行
         return self.error is None and self.pages > 0 and not self.truncated
 
 
@@ -251,7 +251,7 @@ def _merge_key(row):
     合并主键。
 
     ★ floor_id 缺失时必须退回 reply_id ——
-      否则所有缺 floor_id 的行都会塌成同一个 key（None），
+      否则所有缺 floor_id 的行都会合并成同一个 key（None），
       两趟 120 条会静默合并成 1 条。
     """
     if row.get("floor_id") is not None:
@@ -279,10 +279,10 @@ def _crawl_pass(level_id, region, sort_type, delay, max_pages=200):
             has_more = cur.get("has_more")
             nxt = cur.get("next")
 
-            # has_more 提前变 false：多跑几页确认游标成环
+            # has_more 提前变 false：额外请求几页确认游标成环
             if not has_more:
                 if not nxt:
-                    break          # 没有下一页可确认，别回头重抓第一页
+                    break          # 没有下一页可确认，不要回头重抓第一页
                 tail += 1
                 if tail >= TAIL_CONFIRM:
                     break
@@ -320,7 +320,7 @@ def crawl(level_id, region="cn_gf01", delay=DEFAULT_DELAY, target_id=None,
     res = CrawlResult(level_id=str(level_id), region=region,
                       target_id=target_id or str(level_id))
 
-    # 元信息（热度 / 官方好评率 / 关卡名）—— 拿不到不影响主流程
+    # 元信息（热度 / 官方好评率 / 关卡名）—— 获取失败不影响主流程
     try:
         res.meta = fetch_meta(level_id, region)
     except Exception:
@@ -344,7 +344,7 @@ def crawl(level_id, region="cn_gf01", delay=DEFAULT_DELAY, target_id=None,
         p = _crawl_pass(level_id, region, st, delay, max_pages)
         res.passes.append(p)
 
-    # 合并：主键去重，点赞数取 max
+    # 合并：主键去重，点赞数取最大值
     merged = {}
     for p in res.passes:
         for row in p.rows:

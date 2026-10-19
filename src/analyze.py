@@ -3,7 +3,7 @@
 
 用法：
   python analyze.py --level-id 50105539813          # 真实抓取（需网络）
-  python analyze.py --fixture fixtures/sample_chess_30.json  # 用脱敏样例跑通
+  python analyze.py --fixture fixtures/sample_chess_30.json  # 使用脱敏样例运行
   python analyze.py --level-id xxx --outdir out/xxx
 
 产出：
@@ -32,7 +32,7 @@ from dashboard import build_dashboard, verify_dashboard
 
 # 痛点词典 —— 允许重叠，最终由人工裁决（见 03-topic-clustering.md）
 # 词典必须按实际数据扩充 —— 象棋案例里最大的盲区是「玩法与规则」
-# （超时判负、将军次数限制、开始键缺失），初版完全没有覆盖。
+# （超时判负、将军次数限制、开始键缺失），初版没有覆盖。
 CATEGORIES = {
     "操作手感": ["卡", "延迟", "掉帧", "失灵", "判定", "碰撞", "操作", "转向", "手感"],
     "性能与稳定性": ["卡顿", "卡死", "闪退", "加载", "崩溃", "黑屏"],
@@ -255,7 +255,7 @@ def _scan_output_for_identities(outdir, original_details):
       地域分布这类聚合结果（某省 111 条）不视为身份泄漏 —— 它不指向个人。
     """
     # ★ 已脱敏的输入不能再当作「真实身份基准」——
-    #   否则伪名（用户AA）会被当成真实昵称，重跑时稳定产生假泄漏。
+    #   否则伪名（用户AA）会被当成真实昵称，重新运行时稳定产生假泄漏。
     PSEUDO_UID = re.compile(r"^u_[0-9a-f]{10}$")
     PSEUDO_NAME = re.compile(r"^用户[A-Z0-9]+$")
 
@@ -432,7 +432,7 @@ def main():
         for k, v in checks.items():
             print(f"  {'[OK]' if v else '[FAIL]'} {k}")
         if not ok:
-            print("[WARN] 完整性校验未通过 —— 数据可能有缺失，分析结果不可信")
+            print("[WARN] 完整性校验未通过 —— 数据可能有缺失，分析结果可能不可靠")
 
     domain = domain_lexicon.load_domain_lexicon(args.domain_lexicon)
     extra_templates = list(extra)

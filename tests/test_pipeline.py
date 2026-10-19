@@ -404,7 +404,7 @@ class TestCrawlOffline(unittest.TestCase):
     def test_crawl_falls_back_to_reply_id_when_floor_missing(self):
         """
         ★ floor_id 缺失时，合并主键必须退回 reply_id。
-        否则所有缺 floor_id 的行塌成同一个 key（None），数据静默丢失。
+        否则所有缺 floor_id 的行会合并成同一个 key（None），数据静默丢失。
         """
         import crawler
         self._patch_post({
@@ -417,7 +417,7 @@ class TestCrawlOffline(unittest.TestCase):
         })
         r = crawler.crawl("123", delay=0)
         self.assertEqual(len(r.rows), 3,
-                         f"缺 floor_id 的行不该塌成 1 条，实得 {len(r.rows)}")
+                         f"缺 floor_id 的行不该合并成 1 条，实得 {len(r.rows)}")
         self.assertEqual(r.missing_floor, 3, "缺失数应被记录")
 
     def test_integrity_does_not_crash_on_missing_floor(self):

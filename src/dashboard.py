@@ -160,7 +160,7 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
     # 核心洞察
     html.append('<h2>核心发现</h2>')
     if ap["bad_rate"] < rl["bad_rate"]:
-        tpl_title = "① 表面好评率被系统模板撑起来"
+        tpl_title = "① 表观好评率被系统模板抬高"
         shift = (f'把表观差评率从真实的 {rl["bad_rate"]:.1f}% '
                  f'拉低到 {ap["bad_rate"]:.1f}%')
         bias = f'<b>只看官方公布的 {ap["good_rate"]:.1f}% 会高估体验。</b>'
@@ -218,7 +218,7 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
                 '<span><i style="background:#d29922"></i>* 样本量 &lt; 30</span></div>')
     html.append(_trend_chart(analysis.get("monthly_real", [])))
     html.append('<div class="note"><b>提示：</b>占比会被分母稀释 —— 绝对量与占比必须并排看。'
-                '整体差评率下降可能只是没人玩了，不是体验变好。</div>')
+                '整体差评率下降也可能只是评论总量减少，并不代表体验改善。</div>')
     html.append('</div>')
 
 
@@ -263,7 +263,7 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
     for a, b, c in [
         ("完整性校验", "双趟排序合并 + 七项校验", "单趟排序会漏约 10%，且不报错"),
         ("模板剥离", "高频完全重复自动探测", "不剥离会让体验结论失真"),
-        ("痛点聚类", "词典召回 + 否定剔除 + 人工复核", "纯自动分类必然有误差"),
+        ("痛点聚类", "词典召回 + 否定剔除 + 人工复核", "纯自动分类通常存在误差"),
         ("趋势分析", "绝对量与占比并排", "占比会被分母稀释"),
         ("结论纪律", "先验证再下结论", "每个结论写明推翻条件"),
     ]:

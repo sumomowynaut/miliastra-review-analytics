@@ -91,7 +91,7 @@ def pseudonymize(details):
 
 def mask_text(text, keep_ratio=0.3):
     """
-    轻度打码评论正文：保留部分实义字符，便于展示方法论但降低可识别性。
+    对评论正文做轻度遮蔽：保留部分实义字符，便于展示方法论，同时降低可识别性。
     生产环境建议 keep_ratio=1.0（保留原话）配合 uid/昵称/IP 脱敏。
     """
     if keep_ratio >= 1.0:
@@ -112,7 +112,7 @@ def anonymize_rows(details, keep_ip=False, keep_content=True,
       mask_users 会清空昵称。
     顺序反了 → 所有人被折叠成同一个「用户AA」，等于没脱敏。
 
-    把顺序封在这里，调用方就不会再踩。
+    把顺序封装在这里，调用方不会再犯同类错误。
     """
     step1 = pseudonymize(details)[0]                    # 真实昵称 → 用户X
     step2 = mask_users(step1, keep_ip=keep_ip,
