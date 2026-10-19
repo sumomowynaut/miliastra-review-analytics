@@ -98,6 +98,10 @@ def main():
 
     for path in scan_files():
         rel = os.path.relpath(path, ROOT)
+        # 测试目录里的地域/昵称是构造的假数据，不是泄漏
+        if rel.startswith("tests" + os.sep):
+            continue
+        fn = os.path.basename(path)
         try:
             content = open(path, encoding="utf-8").read()
         except Exception:
@@ -125,24 +129,43 @@ def main():
                     leaks.append((rel, "昵称", nm))
                     break
 
-        # 3. 地域名 —— 仅在数据上下文中判定
-        if REGION_CONTEXT.search(content):
-            for reg in REGIONS:
-                if reg in content:
-                    # 排除公司名等固定表述
-                    idx = content.find(reg)
-                    around = content[max(0, idx - 12): idx + len(reg) + 12]
-                    if any(skip in around for skip in
-                           ("上海米哈游", "米哈游影铁", "香港公司", "上海旅游")):
+        # 3. IP 属地 —— ★ 只判「行级 IP」，不判聚合统计
+        #
+        #    行级 IP（这条评论来自广东）= 个人身份 → 泄漏
+        #    聚合统计（广东 232 条）    = 统计结果，不指向个人 → 合法
+        #
+        #    之前用"文件里出现地域名 + IP 上下文"来判，把合法的聚合分布
+        #    也当成泄漏了 —— 会误报的检查等于没有检查。
+        for m in re.finditer(r'"ip"\s*:\s*"([^"]{1,16})"', content):
+            val = m.group(1)
+            if val in REGIONS:
+                leaks.append((rel, "IP属地(行级)", val))
+                break
+
+        # 3b. Excel 里的行级 IP 属地（明细表的 IP属地 列）
+        #     地域分布表是聚合统计 → 合法，不查
+        if fn.endswith(".xlsx"):
+            try:
+                from openpyxl import load_workbook
+                wb = load_workbook(path, read_only=True)
+                for ws in wb.worksheets:
+                    if "地域" in (ws.title or ""):
+                        continue          # 聚合分布表，合法
+                    rows_iter = ws.iter_rows(values_only=True)
+                    header = next(rows_iter, None)
+                    if not header:
                         continue
-                    # 排除检查器自身的词表
-                    if rel.endswith("check_leaks.py"):
+                    idx = [i for i, h in enumerate(header or [])
+                           if h and str(h).strip() == "IP属地"]
+                    if not idx:
                         continue
-                    # 排除测试里构造的假数据
-                    if rel.startswith("tests" + os.sep):
-                        continue
-                    leaks.append((rel, "IP属地", reg))
-                    break
+                    for row in rows_iter:
+                        for i in idx:
+                            if i < len(row) and row[i] in REGIONS:
+                                leaks.append((rel, "IP属地(行级)", row[i]))
+                                break
+            except Exception:
+                pass
 
         # 4. 通用模式：裸的 9-11 位数字（可能是 uid）
         #    排除哈希前缀（u_xxxxxxxxxx）与常见年份/ID 前缀

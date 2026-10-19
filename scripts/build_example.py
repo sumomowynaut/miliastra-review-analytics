@@ -24,17 +24,23 @@ import schema as schema_mod
 import anonymize
 import domain_lexicon
 from strip_templates import classify_templates
-from analyze import analyze
+from analyze import analyze, _ip_distribution
 from excel_report import build_excel, verify_excel
 from dashboard import build_dashboard, verify_dashboard
 
 
-def slugify(name, level_id):
-    """目录名优先 ASCII —— 中文路径在 URL 里不友好"""
+def slugify(name, level_id, override=None):
+    """
+    目录名优先 ASCII —— 中文路径在 URL 里不友好。
+    纯中文标题无法自动转写，用 override 显式指定。
+    """
+    if override:
+        return override
     ascii_name = re.sub(r"[^\w-]+", "-", name or "").strip("-")
-    if not ascii_name:
-        ascii_name = str(level_id)
-    return ascii_name.lower()
+    # 全是中文时 \w 会保留汉字 —— 检测到非 ASCII 就退回 level_id
+    if not ascii_name or any(ord(c) > 127 for c in ascii_name):
+        ascii_name = re.sub(r"[^0-9a-zA-Z-]+", "-", str(level_id)).strip("-")
+    return ascii_name.lower() or str(level_id)
 
 
 def main():
@@ -61,10 +67,10 @@ def main():
     # ★ 必须接住返回值 —— pseudonymize 不修改入参，返回的是新列表
     pub_rows = anonymize.pseudonymize(pub_rows)[0]
     result = analyze(pub_rows, domain=domain)
-    # 地域分布只保留省级（已是粗粒度），并限制条数
-    result["ip_distribution"] = result["ip_distribution"][:10]
+    # 地域分布用脱敏前的原始数据算省级聚合（统计，不指向个人）
+    result["ip_distribution"] = _ip_distribution(details)[:10]
 
-    slug = slugify(title, level_id)
+    slug = slugify(title, level_id, override=os.environ.get("EXAMPLE_SLUG"))
     outdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                           "examples", slug)
     os.makedirs(outdir, exist_ok=True)
