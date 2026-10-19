@@ -55,13 +55,33 @@ def load_reference(path):
 
 
 def scan_files():
+    """
+    扫描「会被提交的文件」。
+
+    用 git ls-files 取已跟踪文件 + 未跟踪但未被 .gitignore 排除的文件。
+    这样既不会漏掉将要提交的新文件，也不会误报被 gitignore 的本地产出。
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "ls-files",
+             "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT, capture_output=True, text=True, check=True)
+        git_files = [f for f in out.stdout.split("\n") if f.strip()]
+        if git_files:
+            return [os.path.join(ROOT, f) for f in git_files]
+    except Exception:
+        pass
+
+    # 非 git 环境：退化为全目录扫描
+    found = []
     for root, dirs, files in os.walk(ROOT):
-        # 排除数据产出目录（不在版本控制内）
         dirs[:] = [d for d in dirs
                    if d not in EXCLUDE_DIRS and not d.startswith(EXCLUDE_PREFIX)]
         for fn in files:
             if fn.endswith(INCLUDE_EXT):
-                yield os.path.join(root, fn)
+                found.append(os.path.join(root, fn))
+    return found
 
 
 def main():
