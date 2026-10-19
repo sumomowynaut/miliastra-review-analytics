@@ -98,6 +98,8 @@ text = _strip_negated_defects(text)   # → "一点都不 ，但按钮点不动"
 python analyze.py --level-id xxx --domain-lexicon my_domain.json
 ```
 
+> 不传 `--domain-lexicon` 时不会自动加载示例词典；领域词必须显式传入。
+
 ### `ignore` 列表：纯辱骂单独归类
 
 「**游戏」「我***的」这类没有产品信息量。**混进功能类别会污染痛点排序** —— 它们会让"规则与玩法"虚高。

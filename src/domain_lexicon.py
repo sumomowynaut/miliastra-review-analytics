@@ -38,13 +38,17 @@ DOMAIN_EXAMPLE = {
 def load_domain_lexicon(path=None):
     """
     加载领域词典。返回 {category: [keywords], ...} 与 ignore 列表。
-    未提供路径时使用内置示例。
+
+    ★ 未提供路径时返回空领域词典 —— 不会把随项目附带的象棋示例
+      自动套到其他奇域上（否则「将军」「炮」会误伤无关内容）。
+      指定了路径但文件不存在时直接报错，避免静默回退到示例。
     """
-    if path and os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    else:
-        data = DOMAIN_EXAMPLE
+    if not path:
+        return {"categories": {}, "ignore": []}
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"领域词典不存在: {path}")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
 
     categories = {}
     ignore = []

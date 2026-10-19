@@ -678,6 +678,17 @@ class TestPseudonymIsNotIdentity(unittest.TestCase):
 
 class TestDomainLexicon(unittest.TestCase):
 
+    def test_no_path_returns_empty(self):
+        """★ 回归：不传 --domain-lexicon 时曾默认套用象棋示例词典"""
+        d = domain_lexicon.load_domain_lexicon()
+        self.assertEqual(d["categories"], {})
+        self.assertEqual(d["ignore"], [])
+
+    def test_missing_path_raises(self):
+        """指定了词典但文件不存在 → 报错，不能静默回退"""
+        with self.assertRaises(FileNotFoundError):
+            domain_lexicon.load_domain_lexicon("no_such_domain.json")
+
     def test_merges_without_overwriting(self):
         base = {"A": ["x"], "B": ["y"]}
         domain = {"categories": {"A": ["z"], "C": ["w"]}, "ignore": ["q"]}

@@ -74,6 +74,9 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 
 象棋案例加入领域词典后，覆盖率 **31.5% → 75.5%**。
 
+> 不传 `--domain-lexicon` 时只使用通用词典，**不会**自动加载象棋示例；
+> 指定的文件不存在会直接报错，避免静默套错词典。
+
 ---
 
 ## 产出
@@ -139,7 +142,7 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 ├── scripts/
 │   ├── build_example.py    # 生成可公开的案例
 │   └── check_leaks.py      # ★ 提交前脱敏泄漏检查（CI 关卡）
-├── tests/                  # 49 项单元测试，零额外依赖
+├── tests/                  # 51 项单元测试，零额外依赖
 ├── .github/workflows/      # CI：测试 → 端到端 → 产出校验 → 泄漏检查
 └── out/                    # 产出（gitignored）
 ```
