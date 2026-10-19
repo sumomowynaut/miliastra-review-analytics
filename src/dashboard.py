@@ -180,6 +180,19 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
 
     # 模板剥离
     html.append('<h2>模板语剥离</h2>')
+
+    # 模板清单
+    html.append('<div class="card"><div class="tags">')
+    for t in ts.get("top_templates", []):
+        html.append(f'<span class="tag">{_esc(t["text"])}<span class="n">×{t["count"]}</span></span>')
+    html.append('</div>')
+    html.append(f'<div class="sub">剥离后验证：{ts["real_count"]} 条真实评论 → '
+                f'{ts["real_unique"]} 种唯一文本（重复率 {ts["real_dup_rate"]:.1f}%，'
+                f'{"正常" if ts["real_dup_rate"] < 15 else "偏高，可能仍有变体未探测到"}）</div></div>')
+
+    # 差评趋势 —— 独立成节。趋势图讲的是"差评怎么随时间变化"，
+    # 放在"模板语剥离"标题下会让读者以为图里画的是模板，标题与内容错位。
+    html.append('<h2>差评趋势</h2>')
     html.append('<div class="card">')
     html.append('<div class="legend">'
                 '<span><i style="background:#f85149"></i>差评绝对量</span>'
@@ -190,14 +203,6 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
                 '整体差评率下降可能只是没人玩了，不是体验变好。</div>')
     html.append('</div>')
 
-    # 模板清单
-    html.append('<div class="card"><div class="tags">')
-    for t in ts.get("top_templates", []):
-        html.append(f'<span class="tag">{_esc(t["text"])}<span class="n">×{t["count"]}</span></span>')
-    html.append('</div>')
-    html.append(f'<div class="sub">剥离后验证：{ts["real_count"]} 条真实评论 → '
-                f'{ts["real_unique"]} 种唯一文本（重复率 {ts["real_dup_rate"]:.1f}%，'
-                f'{"正常" if ts["real_dup_rate"] < 15 else "偏高，可能仍有变体未探测到"}）</div></div>')
 
     # 痛点
     html.append('<h2>痛点聚类</h2><div class="card"><table>')

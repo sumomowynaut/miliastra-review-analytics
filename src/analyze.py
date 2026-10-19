@@ -204,9 +204,15 @@ def _scan_output_for_identities(outdir, original_details):
     ID_KEYS = ("uid", "user", "ip")
     hits = []
 
+    # Excel 的列名是"用户"，JSON 的键是"user" —— 统一归一化再判定
+    KIND_ALIAS = {"用户": "昵称", "user": "昵称", "昵称": "昵称",
+                  "uid": "UID", "UID": "UID",
+                  "ip": "IP属地", "IP属地": "IP属地"}
+
     def check_value(value, kind, where):
         if not isinstance(value, str) or not value:
             return
+        kind = KIND_ALIAS.get(kind, kind)
         if kind == "UID" and value in real_uids:
             hits.append((where, kind, value))
         elif kind == "昵称" and value in real_names:
@@ -242,8 +248,17 @@ def _scan_output_for_identities(outdir, original_details):
                     from openpyxl import load_workbook
                     wb = load_workbook(path, read_only=True)
                     for ws in wb.worksheets:
-                        rows_iter = ws.iter_rows(values_only=True)
-                        header = next(rows_iter, None)
+                        rows = list(ws.iter_rows(values_only=True))
+                        # ★ 表头不一定在第 1 行 —— 本项目的 Excel 前两行是标题/副标题，
+                        #   表头在第 3 行。必须自动定位，否则整个 Excel 检查形同虚设。
+                        header = None
+                        body_start = 0
+                        for i, r in enumerate(rows[:10]):
+                            labels = {str(c).strip() for c in (r or []) if c}
+                            if labels & {"用户", "UID", "IP属地"}:
+                                header = r
+                                body_start = i + 1
+                                break
                         if not header:
                             continue
                         # 只检查身份列：用户 / UID / IP属地
@@ -251,7 +266,7 @@ def _scan_output_for_identities(outdir, original_details):
                                if h and str(h).strip() in ("用户", "UID", "IP属地")}
                         if not idx:
                             continue
-                        for row in rows_iter:
+                        for row in rows[body_start:]:
                             for i, kind in idx.items():
                                 if i < len(row):
                                     check_value(row[i], kind, path)
@@ -355,10 +370,9 @@ def main():
               "仅供本地使用，切勿直接对外分享")
         pub_details = details
     else:
-        pub_details = anonymize.mask_users(details, keep_ip=False,
-                                           keep_content=True)[0]
-        # ★ 必须接住返回值 —— pseudonymize 不修改入参，返回的是新列表
-        pub_details = anonymize.pseudonymize(pub_details)[0]
+        # ★ 用 anonymize_rows()，它保证「先伪名化再掩码」的顺序
+        pub_details = anonymize.anonymize_rows(details, keep_ip=False,
+                                                keep_content=True)[0]
 
     result = analyze(pub_details, extra_templates=extra_templates, domain=domain)
 
