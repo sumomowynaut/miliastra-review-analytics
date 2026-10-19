@@ -150,6 +150,18 @@ python scripts/check_leaks.py <你的raw.json>
 CI 在每次 push 时自动执行：单元测试 → 端到端 → 产出文件校验 →
 看板自包含检查 → 脱敏泄漏检查 → 确认数据产出未被提交。
 
+本地跑同一套检查：
+
+```bash
+bash scripts/ci.sh
+```
+
+> **关于 `.github/workflows/ci.yml`**：部分推送通道出于安全策略禁止写入
+> `.github/workflows/` 目录，因此该文件需要手动添加一次 ——
+> 仓库根目录新建 `.github/workflows/ci.yml`，内容照抄
+> [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> `scripts/ci.sh` 是它的等价本地实现，不依赖 CI 也能跑全部检查。
+
 ---
 
 ## 使用约束与免责
