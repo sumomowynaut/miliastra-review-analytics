@@ -191,6 +191,33 @@ class TestAnonymize(unittest.TestCase):
         self.assertEqual(out[0]["user"], out[2]["user"])
         self.assertNotEqual(out[0]["user"], out[1]["user"])
 
+    def test_mask_does_not_mutate_input(self):
+        """
+        ★ 脱敏不得修改调用方的原始数据。
+        否则"用真实身份集合校验产出"会变成拿已脱敏的值去比对 —— 自我欺骗。
+        """
+        rows = [{"uid": "12345", "user": "真实昵称", "ip": "上海",
+                 "content": "c", "floor_id": 1}]
+        out, _ = anonymize.mask_users(rows, keep_ip=False)
+        self.assertEqual(rows[0]["uid"], "12345")
+        self.assertEqual(rows[0]["user"], "真实昵称")
+        self.assertEqual(rows[0]["ip"], "上海")
+        self.assertEqual(out[0]["uid"], "u_" + out[0]["uid"][2:])
+        self.assertNotEqual(out[0]["uid"], "12345")
+
+    def test_pseudonymize_does_not_mutate_input(self):
+        rows = [{"user": "张三", "uid": "1"}]
+        out, _ = anonymize.pseudonymize(rows)
+        self.assertEqual(rows[0]["user"], "张三")
+        self.assertTrue(out[0]["user"].startswith("用户"))
+
+    def test_pseudonymize_return_must_be_used(self):
+        """回归：analyze.py 曾丢弃 pseudonymize 的返回值，导致昵称没被替换"""
+        rows = [{"user": "张三", "uid": "1"}]
+        anon = anonymize.mask_users(rows, keep_ip=False)[0]
+        anon2 = anonymize.pseudonymize(anon)[0]
+        self.assertTrue(anon2[0]["user"].startswith("用户"))
+
     def test_public_fixture_has_no_real_identity(self):
         path = os.path.join(ROOT, "fixtures", "sample_chess_30.json")
         with open(path, encoding="utf-8") as f:

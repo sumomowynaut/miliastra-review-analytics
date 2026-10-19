@@ -57,6 +57,8 @@ python src/crawl.py <LEVEL_ID> --out data/raw.json
 python src/analyze.py --level-id <LEVEL_ID> --outdir out
 ```
 
+产出的 Excel 与看板**默认已脱敏**，可直接分享。
+
 > ⚠️ 抓取会对米游游社发起约 90 次请求，**请勿并发或调高频率**。
 > 详见下方「使用约束」。
 
@@ -81,8 +83,14 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 | `千星奇域<ID>_数据报告.xlsx` | 7 个工作表：概览、模板剥离分析、评论明细、月度趋势、痛点聚类、地域分布、方法论与日志 |
 | `千星奇域<ID>_看板.html` | 单文件自包含看板，断网可开，file:// 双击可开 |
 | `analysis.json` | 结构化分析结果，便于二次处理 |
-| `raw_public.json` | 脱敏后的数据（`--public`） |
+| `raw_public.json` | 脱敏后的完整数据（**默认生成**） |
 | `raw.json` | 原始数据（`crawl.py` 产出，**gitignored**） |
+
+> **产出默认脱敏。** Excel、看板、analysis.json 里的 UID / 昵称 / IP 属地
+> 都会被哈希或移除 —— 工具强制执行 [06 交付物检查](methodology/06-delivery-checklist.md)
+> 里的要求，生成的报告可以直接对外分享。
+> 确需保留真实身份（本地排查、回复某个用户）时加 `--keep-identities`，
+> 此时终端会给出警告，且产出**不可直接对外分享**。
 
 看板包含：双口径 KPI、模板剥离前后对比、绝对量+占比双轴趋势图、痛点聚类、高赞评论、地域分布。
 
@@ -168,6 +176,8 @@ bash scripts/ci.sh
 - 数据版权归原作者与上海米哈游影铁科技有限公司所有。本项目不隶属于也不代表 miHoYo。
 - 仓库中**不含任何真实用户 UID、昵称、IP 属地**。所有数据产出目录均已 gitignore。
   Git 历史不可撤回 —— 一旦误提交真实数据，需要用 `git filter-repo` 重写历史。
+- 案例数据**仅对身份信息脱敏**（UID 哈希、昵称替换、IP 移除）；
+  **评论正文为玩家原话**，未做改写。原文版权归原作者所有。
 
 ### 第三方组件
 

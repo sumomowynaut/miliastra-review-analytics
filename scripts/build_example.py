@@ -58,7 +58,8 @@ def main():
     # 顺序很重要：先脱敏原始数据，再基于脱敏数据重算分析结果。
     # 否则 analysis.json 里的 top_liked 会残留原始昵称。
     pub_rows = anonymize.mask_users(details, keep_ip=False, keep_content=True)[0]
-    anonymize.pseudonymize(pub_rows)
+    # ★ 必须接住返回值 —— pseudonymize 不修改入参，返回的是新列表
+    pub_rows = anonymize.pseudonymize(pub_rows)[0]
     result = analyze(pub_rows, domain=domain)
     # 地域分布只保留省级（已是粗粒度），并限制条数
     result["ip_distribution"] = result["ip_distribution"][:10]

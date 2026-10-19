@@ -170,6 +170,102 @@ def analyze(details, extra_templates=None, domain=None):
     }
 
 
+def _scan_output_for_identities(outdir, original_details):
+    """
+    产出自检：确认输出目录里没有残留真实身份。
+
+    ★ 关键：按「字段」检查，不做全文件子串搜索。
+      昵称里混着 "404"、"。。。" 这类短串，它们天然会出现在评论正文里；
+      全局搜子串会产出上千条误报，一个会误报的检查等于没有检查。
+
+    判定标准：只有「与具体评论绑定的身份」才算泄漏。
+      地域分布这类聚合结果（某省 111 条）不视为身份泄漏 —— 它不指向个人。
+    """
+    real_uids = {str(d.get("uid", "")) for d in original_details if d.get("uid")}
+    real_names = {d.get("user", "") for d in original_details if d.get("user")}
+    real_ips = {d.get("ip", "") for d in original_details if d.get("ip")}
+
+    ID_KEYS = ("uid", "user", "ip")
+    hits = []
+
+    def check_value(value, kind, where):
+        if not isinstance(value, str) or not value:
+            return
+        if kind == "UID" and value in real_uids:
+            hits.append((where, kind, value))
+        elif kind == "昵称" and value in real_names:
+            hits.append((where, kind, value))
+        elif kind == "IP属地" and value in real_ips:
+            hits.append((where, kind, value))
+
+    def walk_json(node, where):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in ID_KEYS:
+                    check_value(v, {"uid": "UID", "user": "昵称",
+                                    "ip": "IP属地"}[k], where)
+                else:
+                    walk_json(v, where)
+        elif isinstance(node, list):
+            for item in node:
+                walk_json(item, where)
+
+    for root, _, files in os.walk(outdir):
+        for fn in files:
+            path = os.path.join(root, fn)
+
+            if fn.endswith(".json"):
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        walk_json(json.load(f), path)
+                except Exception:
+                    continue
+
+            elif fn.endswith(".xlsx"):
+                try:
+                    from openpyxl import load_workbook
+                    wb = load_workbook(path, read_only=True)
+                    for ws in wb.worksheets:
+                        rows_iter = ws.iter_rows(values_only=True)
+                        header = next(rows_iter, None)
+                        if not header:
+                            continue
+                        # 只检查身份列：用户 / UID / IP属地
+                        idx = {i: str(h).strip() for i, h in enumerate(header or [])
+                               if h and str(h).strip() in ("用户", "UID", "IP属地")}
+                        if not idx:
+                            continue
+                        for row in rows_iter:
+                            for i, kind in idx.items():
+                                if i < len(row):
+                                    check_value(row[i], kind, path)
+                except Exception:
+                    continue
+
+            elif fn.endswith(".html"):
+                # 看板把数据嵌在 JS 里，按 "uid"/"user"/"ip" 字段模式定位
+                import re
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        content = f.read()
+                except Exception:
+                    continue
+                for key, kind in (("uid", "UID"), ("user", "昵称"), ("ip", "IP属地")):
+                    for m in re.finditer(
+                            r'"%s"\s*:\s*"([^"]{1,64})"' % key, content):
+                        check_value(m.group(1), kind, path)
+
+    # 去重
+    seen = set()
+    uniq = []
+    for path, kind, value in hits:
+        k = (os.path.basename(path), kind)
+        if k not in seen:
+            seen.add(k)
+            uniq.append((path, kind, value))
+    return uniq
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--level-id")
@@ -180,8 +276,8 @@ def main():
     ap.add_argument("--delay", type=float, default=0.35)
     ap.add_argument("--extra-templates", help="逗号分隔的额外模板文案")
     ap.add_argument("--domain-lexicon", help="领域词典 JSON 路径")
-    ap.add_argument("--public", action="store_true",
-                    help="产出脱敏版本（用于公开发布）")
+    ap.add_argument("--keep-identities", action="store_true",
+                    help="保留真实 UID/昵称/IP 属地（仅本地排查用，默认脱敏）")
     args = ap.parse_args()
 
     if not (args.level_id or args.fixture or args.raw):
@@ -234,7 +330,21 @@ def main():
     if meta.get("goodRate"):
         print(f"官方好评率: {meta['goodRate']}（用于口径对齐校验）")
 
-    result = analyze(details, extra_templates=extra_templates, domain=domain)
+    # ---- 脱敏默认开启 ----
+    # methodology/06 交付物检查要求：对外交付的产出不得含真实用户身份。
+    # 工具必须强制执行自己的方法论，所以默认脱敏全部产出（Excel / 看板 / analysis.json）。
+    # 确需保留身份（本地排查、回复某个用户）时用 --keep-identities 显式关闭。
+    if args.keep_identities:
+        print("⚠️  已指定 --keep-identities：产出将包含真实 UID / 昵称 / IP 属地，"
+              "仅供本地使用，切勿直接对外分享")
+        pub_details = details
+    else:
+        pub_details = anonymize.mask_users(details, keep_ip=False,
+                                           keep_content=True)[0]
+        # ★ 必须接住返回值 —— pseudonymize 不修改入参，返回的是新列表
+        pub_details = anonymize.pseudonymize(pub_details)[0]
+
+    result = analyze(pub_details, extra_templates=extra_templates, domain=domain)
 
     outdir = os.path.join(args.outdir, str(level_id))
     os.makedirs(outdir, exist_ok=True)
@@ -244,25 +354,34 @@ def main():
 
     # Excel
     xlsx_path = os.path.join(outdir, f"千星奇域{level_id}_数据报告.xlsx")
-    build_excel(result, details, xlsx_path, level_id=level_id, title=title,
+    build_excel(result, pub_details, xlsx_path, level_id=level_id, title=title,
                 meta=meta)
     xissues = verify_excel(xlsx_path)
     print(f"📊 Excel → {xlsx_path}" + (f"  ⚠️ {xissues}" if xissues else "  ✅ 校验通过"))
 
     # 看板
     html_path = os.path.join(outdir, f"千星奇域{level_id}_看板.html")
-    build_dashboard(result, details, html_path, level_id=level_id, title=title,
+    build_dashboard(result, pub_details, html_path, level_id=level_id, title=title,
                     meta=meta)
     hissues = verify_dashboard(html_path)
     print(f"📈 看板 → {html_path}" + (f"  ⚠️ {hissues}" if hissues else "  ✅ 自包含校验通过"))
 
-    if args.public:
-        pub = anonymize.mask_users(details, keep_ip=False, keep_content=True)[0]
-        anonymize.pseudonymize(pub)
-        with open(os.path.join(outdir, "raw_public.json"), "w", encoding="utf-8") as f:
-            json.dump({"level_id": level_id, "meta": meta, "rows": pub},
-                      f, ensure_ascii=False, indent=2)
-        print(f"🔒 脱敏数据: {outdir}/raw_public.json")
+    # 脱敏后的完整数据
+    with open(os.path.join(outdir, "raw_public.json"), "w", encoding="utf-8") as f:
+        json.dump({"level_id": level_id, "meta": meta,
+                   "note": "UID 已哈希，昵称已替换，IP 属地已移除；评论正文为玩家原话",
+                   "rows": pub_details}, f, ensure_ascii=False, indent=2)
+    print(f"🔒 脱敏数据: {outdir}/raw_public.json")
+
+    if not args.keep_identities:
+        # 自检：产出目录里是否还残留真实身份
+        leak = _scan_output_for_identities(outdir, details)
+        if leak:
+            print(f"⚠️  产出目录检测到 {len(leak)} 处身份残留 —— 请排查")
+            for h in leak:
+                print("   ", h)
+        else:
+            print("✅ 产出自检：未发现真实 UID / 昵称 / IP 属地")
 
     print(f"\n✅ 分析完成 → {outdir}/")
 

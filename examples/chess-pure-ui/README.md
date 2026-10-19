@@ -49,7 +49,7 @@ python src/analyze.py --raw examples/{slug}/raw_public.json --outdir out \
 | 文件 | 说明 |
 |---|---|
 | `analysis.json` | 分析结果 |
-| `raw_public.json` | 脱敏后的评论数据（UID 已哈希，昵称替换为「用户X」，IP 属地已移除） |
+| `raw_public.json` | 脱敏后的评论数据（UID 已哈希，昵称替换为「用户X」，IP 属地已移除）。**仅身份信息脱敏，评论正文为玩家原话，未做改写** |
 | `看板.html` | 自包含看板，断网可开 |
 | `数据报告.xlsx` | 7 表 Excel 报告 —— **本地生成**（二进制文件未入库，见下方说明） |
 

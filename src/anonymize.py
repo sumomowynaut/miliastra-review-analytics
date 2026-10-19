@@ -22,13 +22,19 @@ def _h(uid, salt="miliastra-analytics"):
 
 def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analytics"):
     """
-    脱敏评论列表（原地修改并返回）。
+    脱敏评论列表。
+
+    ★ 不修改传入的原始数据 —— 返回的是副本。
+      原地修改会毁掉调用方的原始数据，导致"拿已脱敏的值当真实值去校验"这类
+      自我欺骗式的误判（真实身份集合会随之被污染）。
 
     keep_ip     : 是否保留 IP 属地（建议 False）
     keep_content: 是否保留评论正文（建议 True —— 分析结论依赖原话）
     """
     uid_map = {}
-    for d in details:
+    out = []
+    for src in details:
+        d = dict(src)                       # 浅拷贝：字段都是标量，足够
         uid = str(d.get("uid", ""))
         if uid and uid not in uid_map:
             uid_map[uid] = _h(uid, salt)
@@ -38,14 +44,21 @@ def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analyt
             d["ip"] = ""
         if not keep_content:
             d["content"] = ""
-    return details, uid_map
+        out.append(d)
+    return out, uid_map
 
 
 def pseudonymize(details):
-    """把昵称替换成稳定的「用户A/B/C」，保留排名可读性"""
+    """
+    把昵称替换成稳定的「用户A/B/C」，保留排名可读性。
+
+    同样不修改传入的原始数据。
+    """
     seen = {}
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    for d in details:
+    out = []
+    for src in details:
+        d = dict(src)
         name = d.get("user") or ""
         if name not in seen:
             idx = len(seen)
@@ -53,7 +66,8 @@ def pseudonymize(details):
             seen[name] = f"用户{letters[prefix]}{letters[rest] if prefix == 0 else ''}" \
                 if prefix == 0 else f"用户{prefix}{letters[rest]}"
         d["user"] = seen[name]
-    return details, seen
+        out.append(d)
+    return out, seen
 
 
 def mask_text(text, keep_ratio=0.3):
