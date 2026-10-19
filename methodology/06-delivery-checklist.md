@@ -12,37 +12,44 @@
 
 ## Excel 检查清单
 
-- [ ] 能正常打开（用 openpyxl 重新 load 一次）
-- [ ] 中文无乱码（表头抽检）
-- [ ] 工作表数量与预期一致
+自动校验（`verify_excel`）：
+
+- [x] 能正常打开（用 openpyxl 重新 load 一次）
+- [x] 中文无乱码（表头抽检）
+- [x] 工作表数量与预期一致
+- [x] 每张表非空
+
+需要人工确认：
+
 - [ ] 行数与数据条数一致
 - [ ] 关键指标与源数据交叉核对
-- [ ] 列宽自适应、不截断
-- [ ] 日期是真正的 date 类型而非字符串
-- [ ] 百分比格式正确（0.79 不是 79.00%）
+- [ ] 关键列宽度合适、长文本自动换行
+- [ ] 日期格式统一为 `YYYY-MM-DD HH:MM`（本项目存字符串，便于筛选排序）
+- [ ] 百分比列表头标注 `(%)`、单元格存数值（如 `90.6`，不是 `0.906`）
 
 ```python
-from openpyxl import load_workbook
-wb = load_workbook(path)
-assert len(wb.sheetnames) == 7
-for ws in wb.worksheets:
-    assert ws.max_row > 1
+issues = verify_excel(path)
+assert not issues, issues
 ```
 
 ## HTML 看板检查清单
 
-- [ ] **单文件自包含**（无外部 CSS/JS/字体依赖）
-- [ ] 断网能打开
-- [ ] 双击能开（file:// 协议）
-- [ ] 无 console error
+自动校验（`verify_dashboard`）：
+
+- [x] **单文件自包含**（无外部 CSS/JS/资源引用）
+- [x] 内容长度正常，无乱码
+
+需要人工确认：
+
+- [ ] 断网能打开、双击能开（file:// 协议）
+- [ ] 浏览器 console 无报错
 - [ ] 移动端/窄屏不塌
 - [ ] 深色背景对比度足够
 - [ ] 每个图表都标了数据来源和生成时间
 
 ```python
-# 自包含检查：不应有外部引用
-assert "http://" not in html or "<script src" not in html
-assert "<link rel=\"stylesheet\"" not in html
+issues = verify_dashboard(path)
+assert not issues, issues
 ```
 
 ## 脱敏检查（如果对外发布）

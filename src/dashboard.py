@@ -7,8 +7,6 @@
   · 图表用纯 SVG，不引第三方库
 """
 
-import json
-import os
 from datetime import datetime
 
 CSS = """
@@ -161,21 +159,37 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
 
     # 核心洞察
     html.append('<h2>核心发现</h2>')
-    html.append('<div class="insight"><div class="t">① 表面好评率被系统模板撑起来</div>'
+    if ap["bad_rate"] < rl["bad_rate"]:
+        tpl_title = "① 表面好评率被系统模板撑起来"
+        shift = (f'把表观差评率从真实的 {rl["bad_rate"]:.1f}% '
+                 f'拉低到 {ap["bad_rate"]:.1f}%')
+        bias = f'<b>只看官方公布的 {ap["good_rate"]:.1f}% 会高估体验。</b>'
+    elif ap["bad_rate"] > rl["bad_rate"]:
+        tpl_title = "① 系统模板掩盖了真实好评"
+        shift = (f'把表观差评率从真实的 {rl["bad_rate"]:.1f}% '
+                 f'抬高到 {ap["bad_rate"]:.1f}%')
+        bias = f'<b>只看官方公布的 {ap["good_rate"]:.1f}% 会低估体验。</b>'
+    else:
+        tpl_title = "① 系统模板没有改变总体评价"
+        shift = f'表观与真实差评率同为 {ap["bad_rate"]:.1f}%'
+        bias = ""
+    html.append(f'<div class="insight"><div class="t">{tpl_title}</div>'
                 f'<div class="b">{ts["template_count"]} 条系统默认文案占全部评论的 '
-                f'{ts["template_pct"]:.1f}%，把表观差评率从真实的 {rl["bad_rate"]:.1f}% '
-                f'拉低到 {ap["bad_rate"]:.1f}%。<b>只看官方公布的 {ap["good_rate"]:.1f}% '
-                f'会严重高估体验。</b></div></div>')
-    html.append('<div class="insight"><div class="t">② 差评集中在少数几类痛点</div>'
+                f'{ts["template_pct"]:.1f}%，{shift}。{bias}</div></div>')
+    cov_note = ("；覆盖率偏低，类别之外可能还有未识别问题"
+                if cov.get("coverage", 0) < 70 else "")
+    html.append('<div class="insight"><div class="t">② 差评的主要类别</div>'
                 f'<div class="b">真实差评 {cov.get("negative_total", 0)} 条，'
-                f'词典覆盖率 {cov.get("coverage", 0):.1f}%。'
+                f'词典覆盖率 {cov.get("coverage", 0):.1f}%{cov_note}。'
                 f'Top 类别：{"、".join(t["category"] for t in analysis.get("topics", [])[:3]) or "—"}。</div></div>')
-    recent = [m for m in analysis.get("monthly_real", [])][-1:]
+    recent = [m for m in analysis.get("monthly_real", [])
+              if m.get("month") != "unknown"][-1:]
     if recent:
         m = recent[0]
-        html.append('<div class="insight"><div class="t">③ 最近一个月真实差评率</div>'
+        stale = "" if m["month"] == f"{datetime.now():%Y-%m}" else "（该月不是当前月）"
+        html.append('<div class="insight"><div class="t">③ 最近一个有评论的月份</div>'
                     f'<div class="b">{_esc(m["month"])} 真实差评 {m["bad"]}/{m["total"]} 条 '
-                    f'= {m["bad_pct"]:.1f}%。'
+                    f'= {m["bad_pct"]:.1f}%{stale}。'
                     f'{"⚠️ 样本量不足 30，结论仅供参考。" if m["total"] < 30 else "样本量充足。"}</div></div>')
 
     # 模板剥离
@@ -183,8 +197,12 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
 
     # 模板清单
     html.append('<div class="card"><div class="tags">')
-    for t in ts.get("top_templates", []):
-        html.append(f'<span class="tag">{_esc(t["text"])}<span class="n">×{t["count"]}</span></span>')
+    templates = ts.get("templates") or ts.get("top_templates", [])
+    for t in templates[:12]:
+        label = t.get("sample") or t["text"]
+        html.append(f'<span class="tag">{_esc(label)}<span class="n">×{t["count"]}</span></span>')
+    if len(templates) > 12:
+        html.append(f'<span class="tag">其余 {len(templates) - 12} 种…</span>')
     html.append('</div>')
     html.append(f'<div class="sub">剥离后验证：{ts["real_count"]} 条真实评论 → '
                 f'{ts["real_unique"]} 种唯一文本（重复率 {ts["real_dup_rate"]:.1f}%，'
@@ -243,7 +261,7 @@ def build_dashboard(analysis, details, out_path, level_id="", title="",
     html.append('<h2>分析方法</h2><div class="card"><table>')
     html.append('<tr><th>环节</th><th>做法</th><th>为什么</th></tr>')
     for a, b, c in [
-        ("完整性校验", "双趟排序合并 + 六项校验", "单趟排序会漏约 10%，且不报错"),
+        ("完整性校验", "双趟排序合并 + 七项校验", "单趟排序会漏约 10%，且不报错"),
         ("模板剥离", "高频完全重复自动探测", "不剥离会让体验结论失真"),
         ("痛点聚类", "词典召回 + 否定剔除 + 人工复核", "纯自动分类必然有误差"),
         ("趋势分析", "绝对量与占比并排", "占比会被分母稀释"),

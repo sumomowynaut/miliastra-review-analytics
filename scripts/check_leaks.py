@@ -44,14 +44,17 @@ def load_reference(path):
         blob = json.load(f)
     rows = blob["rows"] if isinstance(blob, dict) and "rows" in blob else blob
     uids, names = set(), set()
+    # 已脱敏的基准数据不能把伪名/哈希当成真实身份，否则会稳定误报
+    PSEUDO_UID = re.compile(r"^u_[0-9a-f]{10}$")
+    PSEUDO_NAME = re.compile(r"^用户[A-Z0-9]+$")
     for r in rows:
         u = str(r.get("uid") or r.get("user_id") or "")
-        if u:
+        if u and not PSEUDO_UID.match(u):
             uids.add(u)
         n = r.get("user") or r.get("username") or ""
         # ★ 阈值 2 —— 2 字昵称（"张三"）也是真实身份，不能漏。
         #   之前收集阈值 >=3、检查阈值 <4，两头都把 2 字昵称漏掉了。
-        if n and len(n) >= 2:
+        if n and len(n) >= 2 and not PSEUDO_NAME.match(n):
             names.add(n)
     return uids, names
 
@@ -86,6 +89,49 @@ def scan_files():
     return found
 
 
+def check_xlsx(path, rel, uids, names, leaks):
+    """
+    检查 Excel 里的行级身份字段。
+
+    ★ 表头不一定在第 1 行（本项目前两行是标题/副标题），
+      必须在前 10 行里自动定位，否则整个检查形同虚设。
+    """
+    from openpyxl import load_workbook
+    wb = load_workbook(path, read_only=True)
+    try:
+        for ws in wb.worksheets:
+            if "地域" in (ws.title or ""):
+                continue          # 聚合分布表，合法
+            rows = list(ws.iter_rows(values_only=True))
+            header = None
+            body_start = 0
+            for i, r in enumerate(rows[:10]):
+                labels = {str(c).strip() for c in (r or []) if c}
+                if labels & {"用户", "昵称", "UID", "IP属地"}:
+                    header = r
+                    body_start = i + 1
+                    break
+            if not header:
+                continue
+            idx = {i: str(h).strip() for i, h in enumerate(header)
+                   if h and str(h).strip() in ("用户", "昵称", "UID", "IP属地")}
+            for row in rows[body_start:]:
+                for i, kind in idx.items():
+                    if i >= len(row):
+                        continue
+                    value = row[i]
+                    if not isinstance(value, str):
+                        value = "" if value is None else str(value)
+                    if kind in ("用户", "昵称") and value in names:
+                        leaks.append((rel, "昵称", value))
+                    elif kind == "UID" and value in uids:
+                        leaks.append((rel, "UID", value))
+                    elif kind == "IP属地" and value in REGIONS:
+                        leaks.append((rel, "IP属地(行级)", value))
+    finally:
+        wb.close()
+
+
 def main():
     ref_path = sys.argv[1] if len(sys.argv) > 1 else None
     uids, names = set(), set()
@@ -104,11 +150,20 @@ def main():
         if rel.startswith("tests" + os.sep):
             continue
         fn = os.path.basename(path)
+        checked += 1
+
+        # Excel 是二进制（zip），不能按 UTF-8 读；单独逐表检查。
+        if fn.endswith(".xlsx"):
+            try:
+                check_xlsx(path, rel, uids, names, leaks)
+            except Exception as e:  # 检查不了也要失败，不能静默跳过
+                leaks.append((rel, "无法检查(Excel)", str(e)))
+            continue
+
         try:
             content = open(path, encoding="utf-8").read()
         except Exception:
             continue
-        checked += 1
 
         # 1. 真实 UID
         for uid in uids:
@@ -146,31 +201,6 @@ def main():
             if val in REGIONS:
                 leaks.append((rel, "IP属地(行级)", val))
                 break
-
-        # 3b. Excel 里的行级 IP 属地（明细表的 IP属地 列）
-        #     地域分布表是聚合统计 → 合法，不查
-        if fn.endswith(".xlsx"):
-            try:
-                from openpyxl import load_workbook
-                wb = load_workbook(path, read_only=True)
-                for ws in wb.worksheets:
-                    if "地域" in (ws.title or ""):
-                        continue          # 聚合分布表，合法
-                    rows_iter = ws.iter_rows(values_only=True)
-                    header = next(rows_iter, None)
-                    if not header:
-                        continue
-                    idx = [i for i, h in enumerate(header or [])
-                           if h and str(h).strip() == "IP属地"]
-                    if not idx:
-                        continue
-                    for row in rows_iter:
-                        for i in idx:
-                            if i < len(row) and row[i] in REGIONS:
-                                leaks.append((rel, "IP属地(行级)", row[i]))
-                                break
-            except Exception:
-                pass
 
         # 4. 通用模式：裸的 9-11 位数字（可能是 uid）
         #    排除哈希前缀（u_xxxxxxxxxx）与常见年份/ID 前缀

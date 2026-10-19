@@ -63,20 +63,22 @@ def detect_templates(details, min_count=8, max_len=60):
 
 ### 启发式依据
 
-- 模板的**重复率接近 100%**（729 条全是同一句）
-- 真实评论重复率很低（703 条 → 675 种唯一文本，**重复率 4%**）
+- 模板的**重复率接近 100%**（725 条全是同一句）
+- 真实评论重复率很低（703 条 → 670 种唯一文本，**重复率 4.7%**）
 
 ### 局限性 ⚠️
 
 - 短词可能误判（"好玩""好"重复 7-9 次）
 - 需要人工确认每一条
 - 只抓完全一致，可能漏掉同类但措辞不同的模板
+- `min_count=8` 是绝对阈值：评论总量很小时可能漏掉模板，用 `--extra-templates` 补充
+- 只处理长度 6–60 的文本，过短/过长的模板需要人工补充
 
 ## 二、剥离
 
 ```python
 # 支持用户补充（同一平台不同奇域模板可能不同）
-TEMPLATES = set(detect_templates(details)) | user_supplied_templates
+TEMPLATES = {t for t, _ in detect_templates(details)} | set(user_supplied_templates)
 
 def is_template(text):
     return normalize(text) in TEMPLATES
@@ -94,7 +96,7 @@ real  = [d for d in details if not d["is_template"]]
 uniq = len({normalize(d["content"]) for d in real})
 dup_rate = 100 - uniq / len(real) * 100
 print(f"{len(real)} 条真实评论 → {uniq} 种唯一文本，重复率 {dup_rate:.1f}%")
-# 实测 703 → 675，重复率 4% ✅
+# 实测 703 → 670，重复率 4.7% ✅
 ```
 
 **若真实评论仍有大量重复，说明还有变体没挖到，回去继续探测。**

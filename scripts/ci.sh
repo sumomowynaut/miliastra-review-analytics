@@ -16,14 +16,14 @@ step() { echo ""; echo "── $1 ──"; }
 ok()   { echo "✅ $1"; }
 bad()  { echo "❌ $1"; FAIL=1; }
 
-step "1/6 单元测试"
+step "1/7 单元测试"
 if python3 -m unittest discover tests/ 2>&1 | tail -3; then
   ok "单元测试通过"
 else
   bad "单元测试失败"
 fi
 
-step "2/6 端到端（脱敏样例，零网络请求）"
+step "2/7 端到端（脱敏样例，零网络请求）"
 if python3 src/analyze.py \
       --fixture fixtures/sample_chess_30.json \
       --outdir out \
@@ -33,13 +33,13 @@ else
   bad "端到端流程失败"
 fi
 
-step "3/6 产出文件校验"
+step "3/7 产出文件校验"
 EXPECT_XLSX="out/50105539813/千星奇域50105539813_数据报告.xlsx"
 EXPECT_HTML="out/50105539813/千星奇域50105539813_看板.html"
 [ -f "$EXPECT_XLSX" ] && ok "Excel 已生成" || bad "Excel 缺失"
 [ -f "$EXPECT_HTML" ] && ok "看板已生成" || bad "看板缺失"
 
-step "4/6 看板自包含检查"
+step "4/7 看板自包含检查"
 python3 - <<'PY' && ok "看板自包含" || bad "看板存在外部依赖"
 import sys, glob
 sys.path.insert(0, "src")
@@ -52,7 +52,7 @@ for p in glob.glob("out/**/*.html", recursive=True):
 sys.exit(1 if fails else 0)
 PY
 
-step "5/6 Excel 校验"
+step "5/7 Excel 校验"
 python3 - <<'PY' && ok "Excel 校验通过" || bad "Excel 校验失败"
 import sys, glob
 sys.path.insert(0, "src")
@@ -65,11 +65,18 @@ for p in glob.glob("out/**/*.xlsx", recursive=True):
 sys.exit(1 if fails else 0)
 PY
 
-step "6/6 脱敏泄漏检查"
+step "6/7 脱敏泄漏检查"
 if python3 scripts/check_leaks.py; then
   ok "未发现真实用户信息泄漏"
 else
   bad "检测到潜在泄漏 —— 请勿提交"
+fi
+
+step "7/7 确认数据产出未被提交"
+if git diff --name-only HEAD~1 2>/dev/null | grep -E '^(out|data)/'; then
+  bad "数据产出目录被提交了"
+else
+  ok "无数据产出入库"
 fi
 
 echo ""

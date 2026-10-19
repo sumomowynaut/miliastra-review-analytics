@@ -52,7 +52,8 @@ def main():
     with open(raw_path, encoding="utf-8") as f:
         blob = json.load(f)
     details = schema_mod.normalize_all(blob["rows"])
-    meta = blob.get("meta", {})
+    meta = blob.get("meta") or {}
+    meta.setdefault("region", blob.get("region", "cn_gf01"))
 
     domain = domain_lexicon.load_domain_lexicon(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",

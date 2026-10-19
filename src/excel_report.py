@@ -1,10 +1,10 @@
 """
 Excel 报告生成 —— 7 个工作表
 
-产出前必过 methodology/06-delivery-checklist.md 的检查项。
+自动校验可机器检查的部分（能否打开 / 表数量 / 非空 / 乱码）；
+完整交付清单见 methodology/06-delivery-checklist.md。
 """
 
-import os
 import re
 from datetime import datetime
 
@@ -126,16 +126,18 @@ def build_excel(analysis, details, out_path, level_id="", title="",
     _header(ws2, 3, ["模板文案", "次数", "占模板比", "探测来源", "归一化后", "样本原句"],
             [40, 10, 12, 12, 30, 40])
     row = 4
-    sample_map = {}
-    for d in details:
-        if d.get("is_template"):
-            sample_map.setdefault(d["content"][:40], d["content"])
-    for t in ts.get("top_templates", []):
-        _row(ws2, row, [t["text"], t["count"], round(t["pct_of_templates"], 1),
-                        "自动探测", t["text"], sample_map.get(t["text"][:40], "")])
+    for t in (ts.get("templates") or ts.get("top_templates", [])):
+        _row(ws2, row, [t.get("sample") or t["text"], t["count"],
+                        round(t["pct_of_templates"], 1), "自动探测",
+                        t["text"], t.get("sample") or ""])
         row += 1
+    user_counts = ts.get("user_added_counts", {})
+    user_samples = ts.get("user_added_samples", {})
     for t in ts.get("user_added", []):
-        _row(ws2, row, [t, 0, 0, "用户补充", t, ""])
+        shown = user_samples.get(t, t)
+        n = user_counts.get(t, 0)
+        pct = n / ts["template_count"] * 100 if ts["template_count"] else 0
+        _row(ws2, row, [shown, n, round(pct, 1), "用户补充", t, shown])
         row += 1
     row += 1
     _row(ws2, row, ["剥离后验证", "", "", "", "", ""])
@@ -159,12 +161,14 @@ def build_excel(analysis, details, out_path, level_id="", title="",
     for i, d in enumerate(sorted(details, key=lambda x: (x.get("date", ""), -x.get("like", 0)))):
         dt = str(d.get("date", ""))
         hour, dow = "", ""
-        m = re.search(r"(\d{2}):(\d{2})", dt)
-        if m:
-            hour = m.group(1)
-        wd = re.search(r"周([一二三四五六日])", dt)
-        if wd:
-            dow = "周" + wd.group(1)
+        try:
+            parsed = datetime.strptime(dt[:19], "%Y-%m-%d %H:%M:%S")
+            hour = f"{parsed.hour:02d}"
+            dow = "周" + "一二三四五六日"[parsed.weekday()]
+        except ValueError:
+            m = re.search(r"(\d{2}):(\d{2})", dt)
+            if m:
+                hour = m.group(1)
         _row(ws3, row, [
             d.get("floor_id", ""), d.get("reply_id", ""), dt[:16],
             d.get("user", ""), d.get("uid", ""), d.get("ip", ""),
@@ -254,7 +258,7 @@ def build_excel(analysis, details, out_path, level_id="", title="",
         ("数据完整性", "双趟排序合并", "FLOOR_DESC + HOT 各跑一趟合并；单趟会漏约 10%", "methodology/01"),
         ("数据完整性", "每页重试 3 次", "失败不 break，单页失败不能拖垮整趟", "methodology/01"),
         ("数据完整性", "点赞数取 max", "两趟数据不一致时取最大值，不覆盖", "methodology/01"),
-        ("数据完整性", "完整性六项校验", "条数/主键/跨度/降级/趟产出/好评率对齐", "methodology/01"),
+        ("数据完整性", "完整性七项校验", "条数/回复ID/跨度/降级/趟产出/楼层完整/好评率对齐", "methodology/01"),
         ("模板剥离", "自动探测", "高频完全重复 = 模板；不硬编码平台文案", "methodology/02"),
         ("模板剥离", "双口径并报", "表观对齐官方，真实用于结论", "methodology/02"),
         ("痛点聚类", "词典召回 + 人工裁决", "报告未命中率；未命中率 >30% 需修词典", "methodology/03"),

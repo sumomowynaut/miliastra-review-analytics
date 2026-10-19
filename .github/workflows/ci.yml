@@ -55,7 +55,11 @@ jobs:
 
       - name: 确认数据产出未被提交
         run: |
-          if git diff --name-only HEAD~1 2>/dev/null | grep -E '^(out|data)/' ; then
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE="HEAD~1"
+          fi
+          if git diff --name-only "$BASE" HEAD | grep -E '^(out|data)/' ; then
             echo "❌ 数据产出目录被提交了"; exit 1
           fi
           echo "✅ 无数据产出入库"

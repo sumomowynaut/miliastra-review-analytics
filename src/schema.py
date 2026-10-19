@@ -6,10 +6,13 @@
 在换数据源时静默出错（取到 None 而不报错）。
 
 标准化 schema：
-  reply_id / floor_id / uid / user / content / date / like / ip / is_recommend
+  reply_id / floor_id / uid / user / content / date / like / reply_count /
+  ip / is_recommend
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+CN_TZ = timezone(timedelta(hours=8))
 
 # 候选字段名（按优先级）
 ALIASES = {
@@ -20,6 +23,7 @@ ALIASES = {
     "content":   ["content", "text", "body"],
     "date":      ["date", "created_at", "createdAt", "dt", "time"],
     "like":      ["like", "like_count", "likeCount"],
+    "reply_count": ["reply_count", "replyCount"],
     "ip":        ["ip", "ip_location", "ipLocation"],
     "is_recommend": ["is_recommend", "rec", "recommend", "good"],
 }
@@ -51,7 +55,7 @@ def _to_bool(v):
 
 def _norm_date(v):
     """统一成 'YYYY-MM-DD HH:MM:SS' 或原样"""
-    s = str(v or "").strip()
+    s = "" if v is None else str(v).strip()
     if not s:
         return ""
     # unix 时间戳
@@ -59,7 +63,7 @@ def _norm_date(v):
         ts = int(s)
         if len(s) == 13:
             ts //= 1000
-        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromtimestamp(ts, CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     # 毫秒字符串
     if "T" in s:
         return s.replace("T", " ")[:19]
@@ -72,7 +76,7 @@ def normalize_row(row):
     # 0 是合法楼层号，混用会丢失「这条缺楼层」的信息。
     floor_raw = _first(row, ALIASES["floor_id"], None)
     floor_id = (None if floor_raw in (None, "")
-                else _to_int(floor_raw))
+                else _to_int(floor_raw, None))
     out = {
         "reply_id": str(_first(row, ALIASES["reply_id"], "")),
         "floor_id": floor_id,
@@ -81,6 +85,7 @@ def normalize_row(row):
         "content": str(_first(row, ALIASES["content"], "")),
         "date": _norm_date(_first(row, ALIASES["date"], "")),
         "like": _to_int(_first(row, ALIASES["like"], 0)),
+        "reply_count": _to_int(_first(row, ALIASES["reply_count"], 0)),
         "ip": str(_first(row, ALIASES["ip"], "")),
         "is_recommend": _to_bool(_first(row, ALIASES["is_recommend"], False)),
     }

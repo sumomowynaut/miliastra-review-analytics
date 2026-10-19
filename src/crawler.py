@@ -30,7 +30,7 @@ import time
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 # ---------------------------------------------------------------- 配置
@@ -70,6 +70,9 @@ RETRY_BACKOFF = 0.8
 TAIL_CONFIRM = 2      # has_more=false 后额外确认页数
 PAGE_SIZE = 20
 
+# 米游社时间戳按北京时间解释；固定偏移，避免在 UTC 服务器上把月度边界算错
+CN_TZ = timezone(timedelta(hours=8))
+
 
 @dataclass
 class Pass:
@@ -83,7 +86,8 @@ class Pass:
 
     @property
     def ok(self):
-        return self.error is None and self.pages > 0
+        # 达到 max_pages 而被截断，也算这一趟没有完整跑完
+        return self.error is None and self.pages > 0 and not self.truncated
 
 
 @dataclass
@@ -112,13 +116,18 @@ class CrawlResult:
         return sum(1 for x in self.rows if x.get("floor_id") is None)
 
     def integrity(self):
-        """六项完整性校验，返回 (通过?, 明细)"""
+        """
+        七项完整性校验，返回 (通过?, 明细)。
+
+        顺序：条数 / reply_id 唯一 / 楼层跨度 / 无降级趟 / 每趟有产出 /
+        floor_id 完整 / 好评率对齐。
+        """
         checks = {}
         r = self.rows
 
         checks["count_matches_total"] = (len(r) == self.total)
-        # ★ 校验器不能先于被校验对象崩溃 —— 一律用 .get()
-        checks["floor_id_unique"] = (
+        # ★ 主键是 reply_id；校验器不能先于被校验对象崩溃 —— 一律用 .get()
+        checks["reply_id_unique"] = (
             len({x.get("reply_id") for x in r}) == len(r) if r else False)
 
         # ★ span 只算非空楼层 —— 缺失的楼层若参与 max/min 会直接 TypeError
@@ -199,7 +208,7 @@ def _to_int(v, default=0):
 
 def _norm_ts(v):
     """created_at 是 unix 秒 → 'YYYY-MM-DD HH:MM:SS'"""
-    s = str(v or "").strip()
+    s = "" if v is None else str(v).strip()
     if not s:
         return ""
     if s.isdigit():
@@ -207,7 +216,7 @@ def _norm_ts(v):
         if len(s) == 13:      # 毫秒
             ts //= 1000
         try:
-            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+            return datetime.fromtimestamp(ts, CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
         except (ValueError, OSError, OverflowError):
             return ""
     return s
@@ -219,9 +228,12 @@ def _parse_rows(data):
     for r in data.get("reply_list", []) or []:
         reply_stat = r.get("reply_stat") or {}
         user_info = r.get("user_info") or {}
+        floor_raw = r.get("floor_id")
         out.append({
             "reply_id": str(r.get("reply_id") or ""),
-            "floor_id": r.get("floor_id"),          # 可能为 None
+            # 可能为 None；字符串楼层号统一转 int，避免 span 计算时 TypeError
+            "floor_id": (None if floor_raw in (None, "")
+                         else _to_int(floor_raw, None)),
             "uid": str(user_info.get("uid") or ""),  # ★ 在 user_info 里
             "user": user_info.get("nickname") or "",
             "content": r.get("content") or "",
@@ -269,6 +281,8 @@ def _crawl_pass(level_id, region, sort_type, delay, max_pages=200):
 
             # has_more 提前变 false：多跑几页确认游标成环
             if not has_more:
+                if not nxt:
+                    break          # 没有下一页可确认，别回头重抓第一页
                 tail += 1
                 if tail >= TAIL_CONFIRM:
                     break

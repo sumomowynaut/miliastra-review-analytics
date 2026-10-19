@@ -8,7 +8,7 @@
 
 真实案例：某次 `FLOOR_DESC` 首页瞬时失败，整趟只贡献 0 条，`reachable=178/1532`。而 `HOT` 趟仍有数据，所以 `complete=false` 之外没有任何显眼信号 —— 差一点就把残缺当全量交付了。
 
-## 六项校验
+## 七项校验
 
 ```python
 c = crawl(level_id, region)
@@ -16,26 +16,35 @@ c = crawl(level_id, region)
 # 1. 条数与接口声明一致
 assert len(c.rows) == c.total
 
-# 2. 主键唯一（同一楼层不应出现两次）
-floors = {r["floor_id"] for r in c.rows}
-assert len(floors) == len(c.rows)
+# 2. 回复 ID 唯一（真正的合并主键）
+reply_ids = {r["reply_id"] for r in c.rows}
+assert len(reply_ids) == len(c.rows)
 
-# 3. 楼层跨度接近条数（跨度过大 = 漏页）
+# 3. 楼层跨度接近条数（跨度过大 = 漏页；缺失楼层不参与 max/min）
+floors = [r["floor_id"] for r in c.rows if r["floor_id"] is not None]
+assert floors, "没有任何楼层号"
 span = max(floors) - min(floors)
 assert span < len(c.rows) * 1.1
 
 # 4. 各趟都正常（见坑 1c：整趟夭折）
 assert not c.degraded
-for p in c.passes:
-    assert p["pages"] > 0 and not p.get("error")
 
-# 5. 好评率与官方一致（口径对齐的强证据）
+# 5. 每一趟都有产出
+for p in c.passes:
+    assert p.pages > 0 and not p.error
+
+# 6. 楼层号完整（缺失会削弱合并去重能力）
+assert c.missing_floor == 0
+
+# 7. 好评率与官方一致（口径对齐的强证据）
 rec = sum(1 for r in c.rows if r["is_recommend"])
 assert abs(rec/len(c.rows)*100 - float(meta["goodRate"].rstrip("%"))) < 0.5
-
-# 6. 中间产物一致性（抓取与分析分两步跑时必做）
-assert sum(d["like"] for d in detail) == sum(to_int(r["reply_stat"]["like_count"]) for r in raw["rows"])
 ```
+
+代码里直接调用 `ok, checks = c.integrity()` 即可，返回的 `checks` 就是这七项。
+
+> **中间产物一致性**（`raw.json` → `analysis.json`）不在七项里，属于两步跑时的人工核对：
+> `sum(d["like"] for d in detail) == sum(to_int(r["reply_stat"]["like_count"]) for r in raw["rows"])`。
 
 ## 坑 1b：必须跑两趟排序
 
@@ -88,7 +97,8 @@ uniq[reply_id].like = max(uniq[reply_id].like, r.like)
 
 ## 检查清单
 
-- [ ] 六项校验全过
+- [ ] 七项校验全过
+- [ ] 回复 ID 唯一、楼层号完整
 - [ ] `passes` 中每趟 `pages > 0`
 - [ ] `degraded == false`
 - [ ] 好评率与官方对齐（±0.5pt）

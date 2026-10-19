@@ -16,7 +16,12 @@ import re
 
 
 def _h(uid, salt="miliastra-analytics"):
-    """稳定哈希 —— 同一 uid 始终得到同一假 id，可做一致性分析但不可反推"""
+    """
+    稳定哈希 —— 同一 uid 始终得到同一假 id，可做一致性分析。
+
+    ⚠️ salt 固定在源码里，低熵数字 UID 仍可能被字典/暴力枚举反查；
+    这是「去标识化」，不是强匿名化。对外发布前请评估是否需要随机 salt。
+    """
     return "u_" + hashlib.sha256(f"{salt}:{uid}".encode()).hexdigest()[:10]
 
 
@@ -55,6 +60,17 @@ def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analyt
     return out, uid_map
 
 
+def _label(idx):
+    """0 → A, 25 → Z, 26 → AA（Excel 列名式编号）"""
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    s = ""
+    idx += 1
+    while idx:
+        idx, rest = divmod(idx - 1, 26)
+        s = letters[rest] + s
+    return s
+
+
 def pseudonymize(details):
     """
     把昵称替换成稳定的「用户A/B/C」，保留排名可读性。
@@ -62,16 +78,12 @@ def pseudonymize(details):
     同样不修改传入的原始数据。
     """
     seen = {}
-    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     out = []
     for src in details:
         d = dict(src)
         name = d.get("user") or ""
         if name not in seen:
-            idx = len(seen)
-            prefix, rest = divmod(idx, 26)
-            seen[name] = f"用户{letters[prefix]}{letters[rest] if prefix == 0 else ''}" \
-                if prefix == 0 else f"用户{prefix}{letters[rest]}"
+            seen[name] = f"用户{_label(len(seen))}"
         d["user"] = seen[name]
         out.append(d)
     return out, seen

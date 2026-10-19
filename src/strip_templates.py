@@ -27,8 +27,8 @@ def detect_templates(details, min_count=8, max_len=60, min_len=6, top_n=50):
     自动探测疑似模板文案。
 
     启发式依据：
-      · 模板重复率接近 100%（实测 729 条同一句）
-      · 真实评论重复率很低（703 条 → 675 种唯一，重复率 4%）
+      · 模板重复率接近 100%（实测 725 条同一句）
+      · 真实评论重复率很低（703 条 → 670 种唯一，重复率 4.7%）
 
     返回 [(归一化文本, 命中次数), ...]，按次数降序
     """
@@ -57,11 +57,13 @@ def classify_templates(details, extra_templates=None, min_count=8,
     auto_counts = dict(auto)
 
     user_added = []
+    user_added_samples = {}
     for t in (extra_templates or []):
         key = normalize(t)
         if key and key not in template_set:
             template_set.add(key)
             user_added.append(key)
+            user_added_samples[key] = t
 
     for d in details:
         d["is_template"] = normalize(d.get("content", "")) in template_set
@@ -73,6 +75,21 @@ def classify_templates(details, extra_templates=None, min_count=8,
     uniq = len({normalize(d.get("content", "")) for d in real})
     dup_rate = 100 - (uniq / len(real) * 100) if real else 0.0
 
+    # 归一化文本用于匹配，展示时用一条原始文案（保留标点）
+    sample_by_key = {}
+    for d in template_rows:
+        sample_by_key.setdefault(normalize(d.get("content", "")),
+                                 d.get("content", ""))
+    templates = [
+        {
+            "text": t,
+            "sample": sample_by_key.get(t, t),
+            "count": n,
+            "pct_of_templates": n / len(template_rows) * 100 if template_rows else 0,
+        }
+        for t, n in auto
+    ]
+
     stats = {
         "total": len(details),
         "template_count": len(template_rows),
@@ -82,19 +99,22 @@ def classify_templates(details, extra_templates=None, min_count=8,
         "real_dup_rate": dup_rate,
         "auto_detected": auto_counts,
         "user_added": user_added,
-        "top_templates": [
-            {"text": t, "count": n,
-             "pct_of_templates": n / len(template_rows) * 100 if template_rows else 0}
-            for t, n in auto[:5]
-        ],
+        "user_added_samples": user_added_samples,
+        "user_added_counts": {
+            t: sum(1 for d in template_rows
+                   if normalize(d.get("content", "")) == t)
+            for t in user_added
+        },
+        "templates": templates,
+        "top_templates": templates[:5],
     }
 
     if verbose:
         print(f"模板 {stats['template_count']}/{stats['total']} "
               f"({stats['template_pct']:.1f}%) | "
               f"真实 {stats['real_count']} → {uniq} 种唯一, 重复率 {dup_rate:.1f}%")
-        for t in stats["top_templates"]:
-            print(f"  · [{t['count']}次, {t['pct_of_templates']:.1f}%] {t['text']}")
+        for t in stats["templates"]:
+            print(f"  · [{t['count']}次, {t['pct_of_templates']:.1f}%] {t['sample']}")
         if user_added:
             print(f"  用户补充 {len(user_added)} 条")
         if dup_rate > 15:
@@ -151,7 +171,8 @@ def group_by_month(details, real_only=True):
             b["bad"] += 1
 
     rows = []
-    for month in sorted(buckets):
+    # 缺日期的行归到 unknown，排在最前 —— 不能让它冒充「最近一个月」
+    for month in sorted(buckets, key=lambda m: (m != "unknown", m)):
         b = buckets[month]
         rows.append({
             "month": month,

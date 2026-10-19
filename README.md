@@ -54,12 +54,13 @@ python src/analyze.py --fixture fixtures/sample_chess_30.json --outdir out
 
 ```bash
 python src/crawl.py <LEVEL_ID> --out data/raw.json
-python src/analyze.py --level-id <LEVEL_ID> --outdir out
+python src/analyze.py --raw data/raw.json --outdir out
 ```
 
-产出的 Excel 与看板**默认已脱敏**，可直接分享。
+产出的 Excel 与看板**默认移除 UID / 昵称 / 行级 IP**；
+评论正文仍为玩家原话，对外分享前请按场景评估。
 
-> ⚠️ 抓取会对米游游社发起约 90 次请求，**请勿并发或调高频率**。
+> ⚠️ 请求数随评论量增长（1532 条的案例约 90 次），**请勿并发或调高频率**。
 > 详见下方「使用约束」。
 
 ### 针对你的领域扩展词典
@@ -89,9 +90,9 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 | `raw_public.json` | 脱敏后的完整数据（**默认生成**） |
 | `raw.json` | 原始数据（`crawl.py` 产出，**gitignored**） |
 
-> **产出默认脱敏。** Excel、看板、analysis.json 里的 UID / 昵称 / IP 属地
-> 都会被哈希或移除 —— 工具强制执行 [06 交付物检查](methodology/06-delivery-checklist.md)
-> 里的要求，生成的报告可以直接对外分享。
+> **产出默认脱敏。** Excel、看板、analysis.json 里的 UID / 昵称 / 行级 IP
+> 会被哈希或移除，并按 [06 交付物检查](methodology/06-delivery-checklist.md) 做自检。
+> 评论正文仍是玩家原话，对外分享前请确认场景。
 > 确需保留真实身份（本地排查、回复某个用户）时加 `--keep-identities`，
 > 此时终端会给出警告，且产出**不可直接对外分享**。
 
@@ -127,7 +128,8 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 
 ```
 ├── src/
-│   ├── crawl.py            # 公开接口抓取（重试/双趟合并/完整性校验）
+│   ├── crawl.py            # 抓取命令行入口
+│   ├── crawler.py          # 公开接口封装（重试/双趟合并/完整性校验）
 │   ├── analyze.py          # 主流程：模板剥离 → 痛点聚类 → 趋势 → 产出
 │   ├── strip_templates.py  # ★ 模板自动探测与剥离
 │   ├── domain_lexicon.py   # 领域词典扩展机制
@@ -138,11 +140,11 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 ├── methodology/            # ★ 六份方法论文档（核心资产）
 ├── templates/              # 领域词典模板
 ├── fixtures/               # 脱敏样例数据
-├── examples/               # 完整案例（已脱敏）
+├── examples/               # 案例与 200 条公开样本（已脱敏）
 ├── scripts/
 │   ├── build_example.py    # 生成可公开的案例
 │   └── check_leaks.py      # ★ 提交前脱敏泄漏检查（CI 关卡）
-├── tests/                  # 51 项单元测试，零额外依赖
+├── tests/                  # 63 项单元测试（Excel 用例需 openpyxl）
 ├── .github/workflows/      # CI：测试 → 端到端 → 产出校验 → 泄漏检查
 └── out/                    # 产出（gitignored）
 ```
@@ -150,7 +152,7 @@ python src/analyze.py --level-id <LEVEL_ID> --domain-lexicon my_domain.json
 ## 开发
 
 ```bash
-# 单元测试（只用标准库，clone 下来就能跑）
+# 单元测试（先安装 requirements.txt）
 python -m unittest discover tests/ -v
 
 # 端到端（零网络请求）
@@ -201,15 +203,19 @@ body  {"uid":"", "region":"cn_gf01", "level_id":"<ID>",
 - 本项目通过**米游社公开接口**获取公开评论数据，仅供技术研究与学习。
 - 请遵守[米游社用户协议](https://www.miyoushe.com/agreement)与相关服务条款。
 - **不要并发运行、不要提高请求频率。** 默认 0.35s 间隔是实测可用的值。
-- 数据版权归原作者与上海米哈游影铁科技有限公司所有。本项目不隶属于也不代表 miHoYo。
+- 评论正文版权归原作者所有；奇域相关美术、文本与商标归上海米哈游影铁科技有限公司所有。
+  本项目不隶属于也不代表 miHoYo。
 - 仓库中**不含任何真实用户 UID、昵称、IP 属地**。所有数据产出目录均已 gitignore。
   Git 历史不可撤回 —— 一旦误提交真实数据，需要用 `git filter-repo` 重写历史。
 - 案例数据**仅对身份信息脱敏**（UID 哈希、昵称替换、IP 移除）；
   **评论正文为玩家原话**，未做改写。原文版权归原作者所有。
+- UID 哈希使用的是源码内固定 salt，属于**去标识化**而非强匿名化；
+  低熵数字 UID 仍可能被枚举反查，对外发布前请评估是否需要随机 salt。
 
 ### 第三方组件
 
-抓取与搜索发现环节参考了 [Octavia](https://github.com/kj415j45/octavia)（MIT License）。
+公开接口契约的整理参考了 [Octavia](https://github.com/kj415j45/octavia)（MIT License），
+仓库内不包含其源码。
 本项目原创部分：评论全量抓取方法、模板剥离方法论、痛点聚类框架、
 领域词典机制、可视化方案、字段映射层与交付校验。
 

@@ -5,7 +5,7 @@
 设计要点：
   · 二进制文件（xlsx 等）无法安全传输，单独排除并在报告中列出
   · 所有文件以 UTF-8 文本读取
-  · 编码为 base64 的内容会导致字节损坏，故不做 base64
+  · 直接传 UTF-8 文本，避免调用方自行解码出错
 
 用法：
   python scripts/make_push_payload.py            # 输出统计
@@ -14,6 +14,7 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -60,9 +61,6 @@ def main():
     # 泄漏自检：确认没有任何真实用户数据
     print("\n--- 载荷自检 ---")
     blob = json.dumps(files, ensure_ascii=False)
-    for bad, label in [("279", "9位数字串")]:
-        pass
-    import re
     uids = set(re.findall(r"(?<![0-9a-zA-Z_])([0-9]{9,11})(?![0-9a-zA-Z])", blob))
     uids = {u for u in uids if not u.startswith(("2026", "2025", "2024", "1567", "5010"))}
     print(f"载荷中疑似裸 UID: {len(uids)} 个 {list(uids)[:5]}")

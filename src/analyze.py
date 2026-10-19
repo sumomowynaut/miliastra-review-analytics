@@ -35,10 +35,10 @@ from dashboard import build_dashboard, verify_dashboard
 # （超时判负、将军次数限制、开始键缺失），初版完全没有覆盖。
 CATEGORIES = {
     "操作手感": ["卡", "延迟", "掉帧", "失灵", "判定", "碰撞", "操作", "转向", "手感"],
-    "性能与稳定性": ["卡顿", "卡死", "闪退", "加载", "崩溃", "黑屏", "闪退"],
+    "性能与稳定性": ["卡顿", "卡死", "闪退", "加载", "崩溃", "黑屏"],
     "内容与深度": ["单调", "无聊", "简单", "重复", "缺少", "太少", "内容", "敷衍", "没做完"],
     "关卡设计": ["难度", "太难", "太简单", "死", "卡关", "地图", "路线", "解法", "无解"],
-    "音画体验": ["音", "画质", "贴图", "模型", "特效", "music", "ugly", "贴图"],
+    "音画体验": ["音", "画质", "贴图", "模型", "特效", "music", "ugly"],
     "ui与交互": ["ui", "界面", "按钮", "菜单", "交互", "开始键", "开始"],
     # ★ 规则与玩法缺陷 —— 竞智/策略类关卡的核心痛点
     "规则与玩法": [
@@ -46,13 +46,13 @@ CATEGORIES = {
         "超时", "判负", "判赢", "自动判", "限制", "禁止", "不允许", "强制",
         "将军", "次数", "计时", "分钟", "退出", "重开", "重连",
         "匹配", "联机", "单人", "多人", "对手", "公平", "作弊", "耍赖",
-        "没有", "缺少", "取消", "设置", "选项",
+        "没有", "缺少", "设置", "选项",
     ],
     "合规与审核": ["过审", "审核", "违规", "下架", "封"],
     # ★ 纯情绪吐槽 —— 单独归类，不混入功能类别
     #   这类评论没有可行动的产品信息，混进去会污染痛点排序。
     #   单列出来是为了让"未命中"里剩下的确实是产品问题。
-    "情绪化吐槽": ["垃圾", "恶心", "白痴", "脑瘫", "离谱", "依托", "答辩", "答辩",
+    "情绪化吐槽": ["垃圾", "恶心", "白痴", "脑瘫", "离谱", "依托", "答辩",
                     "rz", "屑", "难看", "烂", "有病", "什么玩意", "做的啥"],
 }
 
@@ -233,9 +233,10 @@ def _ip_distribution(original_details, template_flags=None, top=15):
 
     如果先脱敏再算，这个功能就整个消失了 —— 那是把"删个人信息"做成了"删功能"。
     """
-    from collections import Counter
     rows = original_details
     if template_flags is not None:
+        if len(template_flags) != len(original_details):
+            raise ValueError("template_flags 与 original_details 长度不一致")
         rows = [d for d, is_tpl in zip(original_details, template_flags)
                 if not is_tpl]
     c = Counter(d.get("ip") for d in rows if d.get("ip"))
@@ -380,6 +381,10 @@ def main():
     ap.add_argument("--keep-identities", action="store_true",
                     help="保留真实 UID/昵称/IP 属地（仅本地排查用，默认脱敏）")
     args = ap.parse_args()
+
+    if args.delay < 0.2:
+        print("[WARN] delay < 0.2s 可能触发风控，已强制提升至 0.2s")
+        args.delay = 0.2
 
     if not (args.level_id or args.fixture or args.raw):
         ap.error("需要 --level-id / --fixture / --raw 之一")

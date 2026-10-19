@@ -23,10 +23,11 @@ from crawler import crawl, DEFAULT_DELAY
 # 完整性校验的通过门槛
 PASS_RULES = [
     ("count_matches_total", "条数与接口声明一致"),
-    ("floor_id_unique", "楼层号唯一"),
+    ("reply_id_unique", "回复 ID 唯一"),
     ("span_reasonable", "楼层跨度合理（无漏页）"),
     ("no_degraded_pass", "所有抓取趟均正常"),
     ("all_passes_produced", "每一趟都有产出"),
+    ("floor_id_present", "楼层号完整"),
     ("goodrate_aligned", "好评率与官方对齐"),
 ]
 
@@ -76,7 +77,9 @@ def main():
             "degraded": res.degraded,
             "checks": checks,
             "passes": [{"sort_type": p.sort_type, "pages": p.pages,
-                        "error": p.error, "row_count": len(p.rows)}
+                        "error": p.error, "row_count": len(p.rows),
+                        "missing_floor": p.missing_floor,
+                        "truncated": p.truncated}
                        for p in res.passes],
         }, f, ensure_ascii=False, indent=2)
 

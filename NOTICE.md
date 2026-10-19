@@ -26,11 +26,8 @@
   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
   ```
 
-- **使用方式**：本项目在「搜索发现」与「补充元数据」环节参考了 Octavia 的接口思路
-  与其 MIT 协议下的源码。**未直接打包其代码**；`src/crawler.py` 为独立实现。
-- **衍生说明**：`src/` 中关于 GUID 编解码的三项工具函数
-  （`guidToUid` / `uidToRegion` / `guidToRegion`）系依据该 MIT 项目源码推导得出，
-  并在本项目内独立实现与验证（220/220 样本零误差）。
+- **使用方式**：本项目在早期接口调研时参考了 Octavia 的公开资料与接口思路。
+  **仓库内不包含 Octavia 的源码**；`src/crawler.py` 为独立实现。
 
 ---
 
@@ -47,9 +44,9 @@
 | `src/anonymize.py` | 脱敏流水线（稳定哈希 + 昵称伪名化） |
 | `src/excel_report.py` | 7 表 Excel 报告生成 + 交付前自动校验 |
 | `src/dashboard.py` | 纯 SVG 自包含看板 + 自包含性校验 |
-| `src/crawler.py` | 双趟合并 / 重试 / 完整性六项校验的抓取器 |
+| `src/crawler.py` | 双趟合并 / 重试 / 完整性七项校验的抓取器 |
 | `scripts/check_leaks.py` | 提交前的脱敏泄漏检查关卡 |
-| `examples/` | 完整案例的发现与结论 |
+| `examples/` | 案例结论与 200 条公开样本 |
 
 ---
 
