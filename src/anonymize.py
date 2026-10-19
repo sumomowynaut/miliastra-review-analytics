@@ -20,9 +20,10 @@ def _h(uid, salt="miliastra-analytics"):
     return "u_" + hashlib.sha256(f"{salt}:{uid}".encode()).hexdigest()[:10]
 
 
-def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analytics"):
+def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analytics",
+               clear_user=True):
     """
-    脱敏评论列表。
+    脱敏评论列表：哈希 UID、清除 IP 属地。
 
     ★ 不修改传入的原始数据 —— 返回的是副本。
       原地修改会毁掉调用方的原始数据，导致"拿已脱敏的值当真实值去校验"这类
@@ -30,6 +31,11 @@ def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analyt
 
     keep_ip     : 是否保留 IP 属地（建议 False）
     keep_content: 是否保留评论正文（建议 True —— 分析结论依赖原话）
+    clear_user  : 是否清空昵称（默认 True，保持"调用即安全"）
+
+    ⚠️ 如果你打算先做伪名化（pseudonymize），必须传 clear_user=False ——
+      否则昵称在伪名化之前就被清空了，所有人会被折叠成同一个「用户AA」。
+      正常情况下请直接用 anonymize_rows()，它保证顺序正确。
     """
     uid_map = {}
     out = []
@@ -39,7 +45,8 @@ def mask_users(details, keep_ip=False, keep_content=True, salt="miliastra-analyt
         if uid and uid not in uid_map:
             uid_map[uid] = _h(uid, salt)
         d["uid"] = uid_map.get(uid, "")
-        d["user"] = ""
+        if clear_user:
+            d["user"] = ""
         if not keep_ip:
             d["ip"] = ""
         if not keep_content:
@@ -83,6 +90,25 @@ def mask_text(text, keep_ratio=0.3):
     return text[:n] + "…" * max(1, (len(text) - n) // 2)
 
 
+def anonymize_rows(details, keep_ip=False, keep_content=True,
+                    salt="miliastra-analytics"):
+    """
+    ★ 推荐入口：一次性完成「昵称伪名化 + UID 哈希 + IP 清除」。
+
+    为什么要有这个函数：两个操作有先后依赖。
+      pseudonymize 需要真实昵称才能区分不同用户；
+      mask_users 会清空昵称。
+    顺序反了 → 所有人被折叠成同一个「用户AA」，等于没脱敏。
+
+    把顺序封在这里，调用方就不会再踩。
+    """
+    step1 = pseudonymize(details)[0]                    # 真实昵称 → 用户X
+    step2 = mask_users(step1, keep_ip=keep_ip,
+                       keep_content=keep_content, salt=salt,
+                       clear_user=False)[0]             # uid 哈希 + ip 清除，昵称保留
+    return step2, {}
+
+
 def sample_for_fixture(details, n=30, seed=42, salt="miliastra-analytics"):
     """
     抽取一个可公开的示例集。
@@ -114,7 +140,10 @@ def sample_for_fixture(details, n=30, seed=42, salt="miliastra-analytics"):
     # 深拷贝，避免污染原数据
     import copy
     out = copy.deepcopy(picked)
-    mask_users(out, keep_ip=False, keep_content=True, salt=salt)
+    # ★ 用 anonymize_rows() 走完整流程。
+    #   只调 mask_users 会把伪名也清掉（clear_user 默认 True）——
+    #   那样抽样集就退化成了「全员无名」。
+    out = anonymize_rows(out, keep_ip=False, keep_content=True, salt=salt)[0]
     return out
 
 

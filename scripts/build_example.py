@@ -63,9 +63,9 @@ def main():
     # ---- 脱敏 ----
     # 顺序很重要：先脱敏原始数据，再基于脱敏数据重算分析结果。
     # 否则 analysis.json 里的 top_liked 会残留原始昵称。
-    pub_rows = anonymize.mask_users(details, keep_ip=False, keep_content=True)[0]
-    # ★ 必须接住返回值 —— pseudonymize 不修改入参，返回的是新列表
-    pub_rows = anonymize.pseudonymize(pub_rows)[0]
+    # ★ 用 anonymize_rows()，它保证「先伪名化再掩码」的顺序
+    pub_rows = anonymize.anonymize_rows(details, keep_ip=False,
+                                         keep_content=True)[0]
     result = analyze(pub_rows, domain=domain)
     # 地域分布用脱敏前的原始数据算省级聚合（统计，不指向个人）
     result["ip_distribution"] = _ip_distribution(details)[:10]
@@ -80,7 +80,8 @@ def main():
 
     # 公开案例只放分层抽样的 200 条 —— 全量会让仓库体积暴涨，
     # 而分层抽样保留了月度分布，足够展示方法与结论
-    sample_rows = anonymize.sample_for_fixture(pub_rows, n=200, seed=2026)
+    # 传原始数据 —— sample_for_fixture 内部会走完整脱敏流程
+    sample_rows = anonymize.sample_for_fixture(details, n=200, seed=2026)
     with open(os.path.join(outdir, "raw_public.json"), "w", encoding="utf-8") as f:
         json.dump({"level_id": level_id, "region": meta.get("region", "cn_gf01"),
                    "note": "脱敏示例数据 —— UID 已哈希，昵称已替换，IP 属地已移除；"
