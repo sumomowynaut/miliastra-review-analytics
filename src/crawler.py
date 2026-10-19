@@ -56,6 +56,7 @@ class Pass:
 class CrawlResult:
     level_id: str
     region: str
+    target_id: str = ""          # 评论所属的 target_id（默认与 level_id 相同）
     total: int = 0
     meta: dict = field(default_factory=dict)
     rows: list = field(default_factory=list)
