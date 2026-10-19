@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>千星奇域 中国象棋（纯UI） 数据看板</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:"Microsoft YaHei","PingFang SC",
+ -apple-system,"Segoe UI",sans-serif;padding:28px 20px 60px;line-height:1.6}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:26px;font-weight:700;letter-spacing:.5px}
+.sub{color:#7d8590;font-size:13px;margin-top:6px}
+h2{font-size:16px;font-weight:600;margin:34px 0 14px;padding-left:10px;
+ border-left:3px solid #388bfd;display:flex;align-items:center;gap:8px}
+.card{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:18px 20px;margin-bottom:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:20px 0}
+.kpi{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:16px 18px}
+.kpl{color:#7d8590;font-size:12px;margin-bottom:6px}
+.kpv{font-size:27px;font-weight:700;letter-spacing:-.5px}
+.kvd{color:#7d8590;font-size:11px;margin-top:5px}
+.up{color:#3fb950}.down{color:#f85149}.warn{color:#d29922}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#1c2128;color:#7d8590;font-weight:600;text-align:left;
+ padding:9px 12px;font-size:12px;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid #21262d;vertical-align:top}
+tr:hover td{background:#1c2128}
+.mono{font-family:"SF Mono",Consolas,Monaco,monospace;font-size:12px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.bar{height:5px;background:#21262d;border-radius:3px;overflow:hidden;min-width:70px}
+.bar i{display:block;height:100%;background:#388bfd;border-radius:3px}
+.bar i.neg{background:#f85149}.bar i.tpl{background:#6e7681}
+.note{background:#1c2128;border-left:3px solid #d29922;border-radius:0 7px 7px 0;
+ padding:13px 16px;font-size:13px;color:#e6edf3;margin:14px 0}
+.note b{color:#d29922}
+.insight{background:#0f1b2d;border:1px solid #1f3a5f;border-radius:9px;padding:15px 18px;margin:11px 0}
+.insight .t{color:#58a6ff;font-weight:600;font-size:13px;margin-bottom:6px}
+.insight .b{font-size:13px;color:#c9d1d9}
+.tags{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.tag{background:#21262d;border:1px solid #30363d;border-radius:14px;padding:4px 12px;font-size:12px}
+.tag .n{color:#58a6ff;font-weight:600;margin-left:5px}
+.chart{width:100%;height:auto;display:block}
+.legend{display:flex;gap:18px;font-size:12px;color:#7d8590;margin-bottom:10px;
+ flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:11px;height:11px;border-radius:2px;display:inline-block}
+.q{display:flex;flex-direction:column;gap:8px}
+.qi{border-left:2px solid #30363d;padding:7px 0 7px 13px}
+.qi .d{font-size:11px;color:#6e7681;margin-top:3px}
+.foot{color:#6e7681;font-size:12px;margin-top:40px;padding-top:18px;
+ border-top:1px solid #21262d;line-height:1.9}
+@media(max-width:640px){body{padding:16px 12px 40px}.kpv{font-size:22px}
+ table{font-size:12px}th,td{padding:7px 8px}}
+</style>
+</head><body><div class="wrap">
+<h1>千星奇域 · 中国象棋（纯UI）</h1>
+<div class="sub"> ID <span class="mono">50105539813</span> ·
+生成于 2026-10-19 16:31</div><div class="kpis"><div class="kpi"><div class="kpl">总评论数</div>
+<div class="kpv">1532</div>
+<div class="kvd">含 829 条系统模板</div></div><div class="kpi"><div class="kpl">表观好评率</div>
+<div class="kpv up">79.2%</div>
+<div class="kvd">与官方公布值口径一致</div></div><div class="kpi"><div class="kpl">真实好评率</div>
+<div class="kpv warn">69.3%</div>
+<div class="kvd">已剥离 829 条模板</div></div><div class="kpi"><div class="kpl">真实差评率</div>
+<div class="kpv down">30.7%</div>
+<div class="kvd">表观仅 20.8%（低估 9.9pt）</div></div><div class="kpi"><div class="kpl">模板语占比</div>
+<div class="kpv" style="color:#6e7681">54.1%</div>
+<div class="kvd">703 条真实评论</div></div></div><h2>核心发现</h2><div class="insight"><div class="t">① 表面好评率被系统模板撑起来</div><div class="b">829 条系统默认文案占全部评论的 54.1%，把表观差评率从真实的 30.7% 拉低到 20.8%。<b>只看官方公布的 79.2% 会严重高估体验。</b></div></div><div class="insight"><div class="t">② 差评集中在少数几类痛点</div><div class="b">真实差评 216 条，词典覆盖率 75.5%。Top 类别：规则与玩法、操作手感、情绪化吐槽。</div></div><div class="insight"><div class="t">③ 最近一个月真实差评率</div><div class="b">2026-10 真实差评 57/135 条 = 42.2%。样本量充足。</div></div><h2>模板语剥离</h2><div class="card"><div class="legend"><span><i style="background:#f85149"></i>差评绝对量</span><span><i style="background:#58a6ff"></i>差评占比</span><span><i style="background:#d29922"></i>* 样本量 &lt; 30</span></div><svg class="chart" viewBox="0 0 1100 240" preserveAspectRatio="xMidYMid meet"><line x1="54" y1="16.0" x2="1082" y2="16.0" stroke="#21262d" stroke-width="1"/><text x="46" y="20.0" fill="#6e7681" font-size="10" text-anchor="end">57</text><text x="1086" y="20.0" fill="#6e7681" font-size="10" text-anchor="end">42%</text><line x1="54" y1="61.5" x2="1082" y2="61.5" stroke="#21262d" stroke-width="1"/><text x="46" y="65.5" fill="#6e7681" font-size="10" text-anchor="end">42</text><text x="1086" y="65.5" fill="#6e7681" font-size="10" text-anchor="end">32%</text><line x1="54" y1="107.0" x2="1082" y2="107.0" stroke="#21262d" stroke-width="1"/><text x="46" y="111.0" fill="#6e7681" font-size="10" text-anchor="end">28</text><text x="1086" y="111.0" fill="#6e7681" font-size="10" text-anchor="end">21%</text><line x1="54" y1="152.5" x2="1082" y2="152.5" stroke="#21262d" stroke-width="1"/><text x="46" y="156.5" fill="#6e7681" font-size="10" text-anchor="end">14</text><text x="1086" y="156.5" fill="#6e7681" font-size="10" text-anchor="end">11%</text><line x1="54" y1="198.0" x2="1082" y2="198.0" stroke="#21262d" stroke-width="1"/><text x="46" y="202.0" fill="#6e7681" font-size="10" text-anchor="end">0</text><text x="1086" y="202.0" fill="#6e7681" font-size="10" text-anchor="end">0%</text><rect x="116.7" y="182.0" width="46.0" height="16.0" fill="#f85149" rx="3" opacity="0.78"/><text x="139.7" y="228" fill="#7d8590" font-size="10" text-anchor="middle">2026-05</text><rect x="288.0" y="111.8" width="46.0" height="86.2" fill="#f85149" rx="3" opacity="0.78"/><text x="311.0" y="228" fill="#7d8590" font-size="10" text-anchor="middle">2026-06</text><rect x="459.3" y="76.7" width="46.0" height="121.3" fill="#f85149" rx="3" opacity="0.78"/><text x="482.3" y="228" fill="#7d8590" font-size="10" text-anchor="middle">2026-07</text><rect x="630.7" y="44.7" width="46.0" height="153.3" fill="#f85149" rx="3" opacity="0.78"/><text x="653.7" y="228" fill="#7d8590" font-size="10" text-anchor="middle">2026-08</text><rect x="802.0" y="67.1" width="46.0" height="130.9" fill="#f85149" rx="3" opacity="0.78"/><text x="825.0" y="228" fill="#7d8590" font-size="10" text-anchor="middle">2026-09</text><rect x="973.3" y="16.0" width="46.0" height="182.0" fill="#f85149" rx="3" opacity="0.78"/><text x="996.3" y="228" fill="#7d8590" font-size="10" text-anchor="middle">2026-10</text><path d="M139.7,138.1 L311.0,114.3 L482.3,78.4 L653.7,57.2 L825.0,35.9 L996.3,16.0" fill="none" stroke="#58a6ff" stroke-width="2"/><circle cx="139.7" cy="138.1" r="3.2" fill="#58a6ff"/><circle cx="311.0" cy="114.3" r="3.2" fill="#58a6ff"/><circle cx="482.3" cy="78.4" r="3.2" fill="#58a6ff"/><circle cx="653.7" cy="57.2" r="3.2" fill="#58a6ff"/><circle cx="825.0" cy="35.9" r="3.2" fill="#58a6ff"/><circle cx="996.3" cy="16.0" r="3.2" fill="#58a6ff"/></svg><div class="note"><b>提示：</b>占比会被分母稀释 —— 绝对量与占比必须并排看。整体差评率下降可能只是没人玩了，不是体验变好。</div></div><div class="card"><div class="tags"><span class="tag">非常优秀的奇域推荐大家游玩<span class="n">×725</span></span><span class="tag">奇域仍有待打磨期待作者的更新<span class="n">×104</span></span></div><div class="sub">剥离后验证：703 条真实评论 → 670 种唯一文本（重复率 4.7%，正常）</div></div><h2>痛点聚类</h2><div class="card"><table><tr><th>痛点类别</th><th class="num">条数</th><th class="num">占差评比</th><th style="width:180px">分布</th><th>代表评论</th></tr><tr><td><b>规则与玩法</b></td>
+<td class="num">98</td><td class="num">45.4%</td>
+<td><div class="bar"><i class="neg" style="width:100.0%"></i></div></td>
+<td>能不能加一个长将犯规啊，本来我必赢的，但是对面一直将，把我时间耗没了</td></tr><tr><td><b>操作手感</b></td>
+<td class="num">12</td><td class="num">5.6%</td>
+<td><div class="bar"><i class="neg" style="width:13.9%"></i></div></td>
+<td>想问下这个软件识别的逻辑是什么，所有能赢作者的一律判定软件是吗</td></tr><tr><td><b>情绪化吐槽</b></td>
+<td class="num">10</td><td class="num">4.6%</td>
+<td><div class="bar"><i class="neg" style="width:11.6%"></i></div></td>
+<td>都是些臭鱼烂虾，我儿子三岁都比他们下的好</td></tr><tr><td><b>关卡设计</b></td>
+<td class="num">9</td><td class="num">4.2%</td>
+<td><div class="bar"><i class="neg" style="width:10.4%"></i></div></td>
+<td>你这人机难度</td></tr><tr><td><b>ui与交互</b></td>
+<td class="num">7</td><td class="num">3.2%</td>
+<td><div class="bar"><i class="neg" style="width:8.1%"></i></div></td>
+<td>点进去之后一脸懵逼，怎么开始游戏啊开始按钮都没有，就是领什么豆，然后结算</td></tr><tr><td><b>内容与深度</b></td>
+<td class="num">3</td><td class="num">1.4%</td>
+<td><div class="bar"><i class="neg" style="width:3.5%"></i></div></td>
+<td>这个选择时间的太恶心了  我只想打10分钟的 不能直接匹配10分钟的吗   对面选5分钟 直接拼手速 太恶心了  还随机</td></tr><tr><td><b>音画体验</b></td>
+<td class="num">2</td><td class="num">0.9%</td>
+<td><div class="bar"><i class="neg" style="width:2.3%"></i></div></td>
+<td>请作者将“全场最区”这个带有嘲讽性质的称号取消掉，这个称号让我感到不适            26/10/5 一编：作者</td></tr></table><div class="note"><b>未命中 51 条</b>（覆盖率 75.5%）—— 需人工复核补词典。</div></div><h2>高赞评论 TOP（已排除模板）</h2><div class="card"><div class="q"><div class="qi">能不能加一个长将犯规啊，本来我必赢的，但是对面一直将，把我时间耗没了
+<div class="d">2026-09-06 · 👍 29</div></div><div class="qi">这个选择时间的太恶心了  我只想打10分钟的 不能直接匹配10分钟的吗   对面选5分钟 直接拼手速 太恶心了  还随机选择时间。还有一直将军怎么办  直接拼手
+<div class="d">2026-09-16 · 👍 9</div></div><div class="qi">想问下这个软件识别的逻辑是什么，所有能赢作者的一律判定软件是吗
+<div class="d">2026-10-08 · 👍 8</div></div><div class="qi">为什么要有好友对战，好友对战，那你应该是组队才对啊
+<div class="d">2026-10-02 · 👍 7</div></div><div class="qi">之前没接触象棋，玩下来整体还不错，也是从区进化了（不天天区了）。目前感觉绝杀后把画面停顿下好点。还有人机对局3个难度都差不多菜的扣脚，先是换子没子了就送子。还有
+<div class="d">2026-10-03 · 👍 6</div></div><div class="qi">都是点的排位，为什么有时候输了扣分赢了不给分？
+<div class="d">2026-10-10 · 👍 6</div></div><div class="qi">我服了 还以为终于有人好好做象棋了 结果搞这么多花里胡哨的 单人开局还要等时间。。。
+<div class="d">2026-10-03 · 👍 5</div></div><div class="qi">其他都没问题，就是开局对方选了20分钟局，就只能选20分钟了，时间根本不够
+<div class="d">2026-10-10 · 👍 5</div></div><div class="qi">作者，对面输不起一直连将我，太恶心了，绝杀都做出来了，连将不管管吗
+<div class="d">2026-09-24 · 👍 4</div></div><div class="qi">不知道哪的问题，为什么有些位置马能走却走不了，象也是
+<div class="d">2026-09-30 · 👍 4</div></div></div></div><h2>分析方法</h2><div class="card"><table><tr><th>环节</th><th>做法</th><th>为什么</th></tr><tr><td><b>完整性校验</b></td><td>双趟排序合并 + 六项校验</td><td>单趟排序会漏约 10%，且不报错</td></tr><tr><td><b>模板剥离</b></td><td>高频完全重复自动探测</td><td>不剥离会让体验结论失真</td></tr><tr><td><b>痛点聚类</b></td><td>词典召回 + 否定剔除 + 人工复核</td><td>纯自动分类必然有误差</td></tr><tr><td><b>趋势分析</b></td><td>绝对量与占比并排</td><td>占比会被分母稀释</td></tr><tr><td><b>结论纪律</b></td><td>先验证再下结论</td><td>每个结论写明推翻条件</td></tr></table></div><div class="foot">
+<b>数据来源</b>：米游社公开评论接口 · 区域 cn_gf01<br>
+<b>方法论</b>：见项目 methodology/ 目录（六份文档）<br>
+<b>免责</b>：本看板为技术研究用途，不隶属于也不代表上海米哈游影铁科技有限公司。
+评论内容版权归原作者所有，引用数据仅作分析演示。<br>
+<b>口径说明</b>：所有结论基于剥离系统模板后的真实评论（703 条）；
+表观口径（1532 条）仅用于与官方好评率对齐校验。
+</div></div></body></html>
