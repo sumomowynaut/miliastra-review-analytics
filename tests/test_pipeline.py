@@ -253,6 +253,146 @@ class TestAnonymize(unittest.TestCase):
             finally:
                 os.remove(p)
 
+    def test_anonymize_rows_keeps_users_distinguishable(self):
+        """
+        ★ 回归：曾先 mask_users 清空昵称再 pseudonymize，
+        导致所有用户被折叠成同一个「用户AA」。
+        """
+        rows = [{"uid": "1", "user": "张三", "ip": "上海", "content": "a"},
+                {"uid": "2", "user": "李四", "ip": "北京", "content": "b"},
+                {"uid": "1", "user": "张三", "ip": "上海", "content": "c"}]
+        out, _ = anonymize.anonymize_rows(rows)
+        names = {r["user"] for r in out}
+        self.assertEqual(len(names), 2, f"不同用户应得到不同伪名，实得 {names}")
+        self.assertEqual(out[0]["user"], out[2]["user"], "同一用户应保持同一伪名")
+        self.assertTrue(all(r["uid"].startswith("u_") for r in out))
+        self.assertTrue(all(r["ip"] == "" for r in out))
+
+    def test_sample_for_fixture_actually_masks(self):
+        """★ 回归：曾丢弃 mask_users 的返回值，抽样集实际没脱敏"""
+        rows = [{"uid": str(i), "user": f"u{i}", "ip": "上海",
+                 "content": f"c{i}", "date": "2026-05-01",
+                 "floor_id": i, "reply_id": str(i)} for i in range(40)]
+        out = anonymize.sample_for_fixture(rows, n=10)
+        for r in out:
+            self.assertTrue(r["uid"].startswith("u_"), r)
+            self.assertEqual(r["ip"], "", r)
+
+
+class TestCrawlerConstruction(unittest.TestCase):
+
+    def test_crawl_result_accepts_target_id(self):
+        """
+        ★ 回归：CrawlResult 缺少 target_id 字段，
+        crawl() 构造时会直接 TypeError —— 主抓取入口根本跑不起来。
+        CI 全程零网络请求，所以这个 bug 不会被自动发现。
+        """
+        from crawler import CrawlResult
+        r = CrawlResult(level_id="1", region="cn_gf01", target_id="1")
+        self.assertEqual(r.target_id, "1")
+
+    def test_crawl_result_target_id_defaults(self):
+        from crawler import CrawlResult
+        r = CrawlResult(level_id="1", region="cn_gf01")
+        self.assertEqual(r.target_id, "")
+
+
+class TestOutputSelfCheck(unittest.TestCase):
+
+    def _rows(self):
+        return [{"uid": "111222333", "user": "真实昵称甲", "ip": "广东",
+                 "content": "c", "is_recommend": False, "date": "2026-05-01",
+                 "floor_id": 1, "reply_id": "1", "like": 0, "is_template": False}]
+
+    def test_excel_nickname_column_leak_is_detected(self):
+        """
+        ★ 回归：自检按表头取列，但 Excel 表头在第 3 行（前两行是标题），
+        旧代码取第 1 行当表头 → 整个 Excel 身份检查从未生效。
+        """
+        import shutil
+        import tempfile
+        from openpyxl import load_workbook
+        from analyze import _scan_output_for_identities
+
+        with tempfile.TemporaryDirectory() as td:
+            wb = load_workbook(os.path.join(ROOT, "fixtures", "dummy.xlsx")) \
+                if os.path.exists(os.path.join(ROOT, "fixtures", "dummy.xlsx")) else None
+            if wb is None:
+                from openpyxl import Workbook
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "评论明细"
+                ws.cell(row=1, column=1, value="评论明细（含模板标记）")
+                ws.cell(row=3, column=1, value="楼层")
+                ws.cell(row=3, column=4, value="用户")
+                ws.cell(row=3, column=5, value="UID")
+                ws.cell(row=3, column=6, value="IP属地")
+                ws.cell(row=4, column=4, value="真实昵称甲")
+                ws.cell(row=4, column=5, value="111222333")
+                ws.cell(row=4, column=6, value="广东")
+            p = os.path.join(td, "r.xlsx")
+            wb.save(p)
+            hits = _scan_output_for_identities(td, self._rows())
+            self.assertTrue(hits, "Excel 中的真实昵称/UID/IP 应被抓到")
+
+    def test_kind_alias_handles_user_column_name(self):
+        """Excel 列名是「用户」，判定分支只认「昵称」→ 需归一化"""
+        import shutil
+        import tempfile
+        from openpyxl import Workbook
+        from analyze import _scan_output_for_identities
+        with tempfile.TemporaryDirectory() as td:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "评论明细"
+            ws.cell(row=3, column=4, value="用户")
+            ws.cell(row=4, column=4, value="真实昵称甲")
+            wb.save(os.path.join(td, "r.xlsx"))
+            hits = _scan_output_for_identities(td, self._rows())
+            self.assertTrue(any(k == "昵称" for _, k, _ in hits), hits)
+
+
+class TestDashboardSections(unittest.TestCase):
+
+    def test_trend_chart_not_under_template_heading(self):
+        """★ 回归：趋势图曾被放在「模板语剥离」标题下，标题与内容错位"""
+        from dashboard import build_dashboard
+        import tempfile
+        rows = [{"content": "系统模板", "is_recommend": True,
+                 "date": "2026-05-01", "like": 0, "uid": "1", "floor_id": 1,
+                 "user": "用户A", "ip": "", "reply_id": "1", "is_template": True}]
+        strip_templates.classify_templates(rows, verbose=False)
+        analysis = {
+            "meta": {"total_comments": 1,
+                     "template_stats": {"template_count": 1, "template_pct": 100.0,
+                                        "real_count": 0, "real_unique": 0,
+                                        "real_dup_rate": 0, "top_templates": [],
+                                        "user_added": []},
+                     "rates": {"apparent": {"total": 1, "good_rate": 100.0,
+                                            "bad_rate": 0},
+                               "real": {"total": 0, "good_rate": 0, "bad_rate": 0},
+                               "delta_bad_rate": 0}},
+            "topics": [], "coverage": {"negative_total": 0, "unmatched": 0,
+                                       "emotional": 0, "classifiable": 0,
+                                       "coverage": 0, "coverage_note": ""},
+            "monthly_real": [{"month": "2026-05", "total": 1, "bad": 0,
+                              "bad_pct": 0, "sample_note": ""}],
+            "monthly_apparent": [], "top_liked": [], "ip_distribution": [],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "d.html")
+            build_dashboard(analysis, rows, p, level_id="1", title="t")
+            with open(p, encoding="utf-8") as fh:
+                content = fh.read()
+            i_trend = content.find("差评趋势")
+            i_tpl = content.find("模板语剥离")
+            i_chart = content.find("<svg")
+            self.assertNotEqual(i_trend, -1, "缺少「差评趋势」小节")
+            self.assertLess(i_trend, i_chart, "趋势图应位于「差评趋势」小节内")
+            self.assertGreater(i_trend, i_tpl,
+                               "「差评趋势」应在「模板语剥离」之后 —— 先讲方法再看结果")
+            self.assertLess(i_trend, i_chart)
+
     def test_public_fixture_has_no_real_identity(self):
         path = os.path.join(ROOT, "fixtures", "sample_chess_30.json")
         with open(path, encoding="utf-8") as f:
