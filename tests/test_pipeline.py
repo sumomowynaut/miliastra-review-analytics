@@ -218,6 +218,41 @@ class TestAnonymize(unittest.TestCase):
         anon2 = anonymize.pseudonymize(anon)[0]
         self.assertTrue(anon2[0]["user"].startswith("用户"))
 
+    def test_row_level_ip_leak_is_detected(self):
+        """行级 IP（一条评论对应一个省）是泄漏，检查器必须抓到"""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(ROOT, "fixtures", "_leak_probe.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"rows": [{"uid": "u_x", "user": "用户A", "ip": "广东"}]},
+                          f, ensure_ascii=False)
+            try:
+                r = subprocess.run(
+                    [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py")],
+                    cwd=ROOT, capture_output=True, text=True)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn("IP属地", r.stdout)
+            finally:
+                os.remove(p)
+
+    def test_aggregate_ip_distribution_is_allowed(self):
+        """省份级聚合统计（广东 232 条）不指向个人，应当放行"""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(ROOT, "fixtures", "_agg_probe.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"ip_distribution": [["广东", 232], ["江苏", 115]]},
+                          f, ensure_ascii=False)
+            try:
+                r = subprocess.run(
+                    [sys.executable, os.path.join(ROOT, "scripts", "check_leaks.py")],
+                    cwd=ROOT, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stdout)
+            finally:
+                os.remove(p)
+
     def test_public_fixture_has_no_real_identity(self):
         path = os.path.join(ROOT, "fixtures", "sample_chess_30.json")
         with open(path, encoding="utf-8") as f:

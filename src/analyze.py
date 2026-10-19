@@ -170,6 +170,22 @@ def analyze(details, extra_templates=None, domain=None):
     }
 
 
+def _ip_distribution(original_details, top=15):
+    """
+    省份级聚合分布 —— 从**脱敏前**的原始数据算。
+
+    为什么要分开算：
+      · 行级 IP（"这条评论来自广东"）= 个人身份，必须移除
+      · 省份级聚合（"广东有 111 条评论"）= 统计结果，不指向个人，可以保留
+
+    如果先脱敏再算，这个功能就整个消失了 —— 那是把"删个人信息"做成了"删功能"。
+    """
+    from collections import Counter
+    c = Counter(d.get("ip") for d in original_details
+                if d.get("ip"))
+    return c.most_common(top)
+
+
 def _scan_output_for_identities(outdir, original_details):
     """
     产出自检：确认输出目录里没有残留真实身份。
@@ -345,6 +361,11 @@ def main():
         pub_details = anonymize.pseudonymize(pub_details)[0]
 
     result = analyze(pub_details, extra_templates=extra_templates, domain=domain)
+
+    # 地域分布用脱敏前的原始数据算聚合统计（不指向个人），
+    # 覆盖掉 analyze() 基于脱敏数据得到的空结果
+    if not args.keep_identities:
+        result["ip_distribution"] = _ip_distribution(details)
 
     outdir = os.path.join(args.outdir, str(level_id))
     os.makedirs(outdir, exist_ok=True)
