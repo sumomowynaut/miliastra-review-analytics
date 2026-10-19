@@ -248,6 +248,11 @@ def _scan_output_for_identities(outdir, original_details):
                     from openpyxl import load_workbook
                     wb = load_workbook(path, read_only=True)
                     for ws in wb.worksheets:
+                        # ★ 聚合表（地域分布）跳过 —— 它的表头也是「IP属地」，
+                        #   但内容是省份级计数（广东 232 条），不指向个人。
+                        #   与 scripts/check_leaks.py 保持同一套判定。
+                        if "地域" in (ws.title or ""):
+                            continue
                         rows = list(ws.iter_rows(values_only=True))
                         # ★ 表头不一定在第 1 行 —— 本项目的 Excel 前两行是标题/副标题，
                         #   表头在第 3 行。必须自动定位，否则整个 Excel 检查形同虚设。
